@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+.venv/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Build output
+dist/
+build/
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Logs and local data
+*.log
+*.db
+*.sqlite3
+
+# Local tooling
+.kiro/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Local helper tools / virtualenvs
+.tools/
+

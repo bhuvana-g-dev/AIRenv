@@ -1,0 +1,39 @@
+services:
+  - type: web
+    name: airenv-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.4
+      - key: AIRENV_ENV
+        value: production
+      - key: AUTH_MODE
+        value: firebase
+      - key: STORAGE_BACKEND
+        value: firestore
+      - key: TELEGRAM_MODE
+        value: webhook
+      - key: CORS_ORIGINS
+        sync: false # e.g. https://airenv.vercel.app
+      - key: PUBLIC_BASE_URL
+        sync: false # e.g. https://airenv-api.onrender.com
+      - key: FIREBASE_PROJECT_ID
+        sync: false
+      - key: FIREBASE_CREDENTIALS
+        sync: false # service-account JSON content
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OPENAQ_API_KEY
+        sync: false
+      - key: DATA_GOV_IN_API_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_WEBHOOK_SECRET
+        generateValue: true
