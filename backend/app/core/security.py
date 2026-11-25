@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import logging
 import secrets
-from datetime import datetime, timezone
-from typing import Any, Callable
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import Depends, Header, HTTPException, status
 from pydantic import BaseModel
@@ -44,7 +45,7 @@ def default_profile(uid: str, email: str | None, display_name: str | None, role:
         "email": email,
         "display_name": display_name or "AIRenv member",
         "role": role,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "onboarded": False,
         "location": {
             "id": f"{round(s.default_lat, 2)}_{round(s.default_lon, 2)}",

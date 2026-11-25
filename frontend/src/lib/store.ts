@@ -51,14 +51,39 @@ interface ToastState {
   toasts: Toast[];
   push: (t: Omit<Toast, "id">) => void;
   dismiss: (id: string) => void;
+  /** Stop the auto-dismiss timer while the user hovers or focuses a toast (WCAG 2.2.1). */
+  hold: (id: string) => void;
+  /** Restart the auto-dismiss timer. */
+  release: (id: string) => void;
 }
 
-export const useToasts = create<ToastState>((set) => ({
-  toasts: [],
-  push: (t) => {
-    const id = Math.random().toString(36).slice(2);
-    set((s) => ({ toasts: [...s.toasts.slice(-3), { ...t, id }] }));
-    setTimeout(() => set((s) => ({ toasts: s.toasts.filter((x) => x.id !== id) })), 6000);
-  },
-  dismiss: (id) => set((s) => ({ toasts: s.toasts.filter((x) => x.id !== id) })),
-}));
+export const TOAST_TIMEOUT_MS = 6000;
+const MAX_TOASTS = 4;
+const timers = new Map<string, ReturnType<typeof setTimeout>>();
+
+export const useToasts = create<ToastState>((set, get) => {
+  const schedule = (id: string) => {
+    clearTimeout(timers.get(id));
+    timers.set(id, setTimeout(() => get().dismiss(id), TOAST_TIMEOUT_MS));
+  };
+  return {
+    toasts: [],
+    push: (t) => {
+      const id = Math.random().toString(36).slice(2);
+      set((s) => ({ toasts: [...s.toasts.slice(-(MAX_TOASTS - 1)), { ...t, id }] }));
+      schedule(id);
+    },
+    dismiss: (id) => {
+      clearTimeout(timers.get(id));
+      timers.delete(id);
+      set((s) => ({ toasts: s.toasts.filter((x) => x.id !== id) }));
+    },
+    hold: (id) => {
+      clearTimeout(timers.get(id));
+      timers.delete(id);
+    },
+    release: (id) => {
+      if (get().toasts.some((x) => x.id === id)) schedule(id);
+    },
+  };
+});

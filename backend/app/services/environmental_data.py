@@ -14,7 +14,7 @@ import asyncio
 import logging
 import math
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.config import get_settings
@@ -290,7 +290,7 @@ async def fetch_stations(lat: float, lon: float, radius_km: float = 25,
                                    return_exceptions=True)
     stations: list[dict[str, Any]] = []
     providers: list[dict[str, Any]] = []
-    for k, res in zip(names, results):
+    for k, res in zip(names, results, strict=True):
         label = STATION_PROVIDERS[k][0]
         if isinstance(res, Exception):
             msg = res.message if isinstance(res, UpstreamError) else str(res)
@@ -300,7 +300,7 @@ async def fetch_stations(lat: float, lon: float, radius_km: float = 25,
             stations.extend(res)
     stations.sort(key=lambda s: s["distance_km"])
     return {"stations": stations, "providers": providers,
-            "fetched_at": datetime.now(timezone.utc).isoformat()}
+            "fetched_at": datetime.now(UTC).isoformat()}
 
 
 def detect_hotspots(stations: list[dict[str, Any]]) -> list[dict[str, Any]]:

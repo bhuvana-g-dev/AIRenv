@@ -20,13 +20,16 @@ import { useEffect, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { LocationSearch } from "../components/LocationPicker";
 import { RecommendationCard } from "../components/env";
-import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Field, Modal, PageHeader, Skeleton, Tabs, Toggle, cn } from "../components/ui";
+import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Field, Modal, PageHeader, Skeleton, Tabs, Toggle } from "../components/ui";
 import { api, del, patch, post } from "../lib/api";
-import { colorForAqi, colorForPm25 } from "../lib/aqi";
+import { AXIS_TICK } from "../components/charts";
+import { colorForAqi, colorForPm25, textColorForAqi } from "../lib/aqi";
+import { seriesSummary } from "../lib/chartSummary";
 import { fmtNum, localDate } from "../lib/format";
 import { useBriefing, useCommunities, useCommunityDetail } from "../lib/queries";
 import { useApp, useToasts } from "../lib/store";
 import type { CommunityDetail, CommunityEvent, Location, Snapshot } from "../lib/types";
+import { cn } from "../lib/cn";
 
 const TYPE_LABEL: Record<string, string> = { school: "School", apartment: "Apartment", rwa: "RWA", community_org: "Organisation", workplace: "Workplace" };
 const CHART_COLORS = ["#35D399", "#55D6E8", "#A78BFA", "#FACC15", "#FB923C", "#7CE7B4"];
@@ -70,7 +73,7 @@ function CreateCommunity({ open, onClose }: { open: boolean; onClose: () => void
             ))}
           </select>
         </Field>
-        <Field label={`Location · ${loc.name}`}>
+        <Field label={`Location · ${loc.name}`} group>
           <LocationSearch onSelect={setLoc} />
         </Field>
         <Button className="w-full" disabled={name.trim().length < 2} loading={m.isPending} onClick={() => m.mutate()}>
@@ -85,7 +88,7 @@ function RiskBadge({ ev }: { ev: CommunityEvent }) {
   const r = ev.risk;
   if (!r) return <Badge color="#94A89D">not assessed</Badge>;
   if (r.level === "unknown") return <Badge color="#94A89D">outside forecast range</Badge>;
-  const color = r.sub_index != null ? colorForAqi(r.sub_index) : "#94A89D";
+  const color = r.sub_index != null ? textColorForAqi(r.sub_index) : "#94A89D";
   return (
     <Badge color={color} dot>
       {r.category_label ?? r.level} · PM2.5 ~{fmtNum(r.forecast_pm2_5)}
@@ -128,8 +131,8 @@ function EventRow({ ev, cid, canManage }: { ev: CommunityEvent; cid: string; can
         <div className="flex items-center gap-2">
           <RiskBadge ev={ev} />
           {canManage && (
-            <button onClick={() => remove.mutate()} className="rounded-lg p-1 text-faint hover:bg-white/5 hover:text-red-300" aria-label="Delete event">
-              <Trash2 className="h-3.5 w-3.5" />
+            <button type="button" onClick={() => remove.mutate()} className="rounded-lg p-1.5 text-faint hover:bg-white/5 hover:text-red-300" aria-label={`Delete activity: ${ev.title}`}>
+              <Trash2 aria-hidden="true" className="h-3.5 w-3.5" />
             </button>
           )}
         </div>
@@ -143,22 +146,22 @@ function EventRow({ ev, cid, canManage }: { ev: CommunityEvent; cid: string; can
       {status === "pending" && (
         <div className="mt-3 rounded-xl border border-cyan/25 bg-cyan/5 p-3">
           <p className="flex items-center gap-1.5 text-[11px] font-medium text-cyan">
-            <ShieldAlert className="h-3.5 w-3.5" /> Advisory awaiting human approval
+            <ShieldAlert aria-hidden="true" className="h-3.5 w-3.5" /> Advisory awaiting human approval
           </p>
           {editing ? (
-            <textarea className="input mt-2 min-h-24 text-xs" value={text} onChange={(e) => setText(e.target.value)} maxLength={1000} />
+            <textarea aria-label={`Advisory text for ${ev.title}`} className="input mt-2 min-h-24 text-xs" value={text} onChange={(e) => setText(e.target.value)} maxLength={1000} />
           ) : (
             <p className="mt-1.5 text-xs leading-relaxed text-ink/85">{text}</p>
           )}
           {canManage && (
             <div className="mt-2.5 flex flex-wrap gap-2">
-              <Button size="sm" icon={<Send className="h-3.5 w-3.5" />} loading={decide.isPending && decide.variables === "approve"} onClick={() => decide.mutate("approve")}>
+              <Button size="sm" icon={<Send aria-hidden="true" className="h-3.5 w-3.5" />} loading={decide.isPending && decide.variables === "approve"} onClick={() => decide.mutate("approve")}>
                 Approve & send
               </Button>
               <Button size="sm" variant="outline" onClick={() => setEditing(!editing)}>
                 {editing ? "Done editing" : "Edit"}
               </Button>
-              <Button size="sm" variant="ghost" icon={<X className="h-3.5 w-3.5" />} onClick={() => decide.mutate("dismiss")}>
+              <Button size="sm" variant="ghost" icon={<X aria-hidden="true" className="h-3.5 w-3.5" />} onClick={() => decide.mutate("dismiss")}>
                 Dismiss
               </Button>
             </div>
@@ -255,10 +258,10 @@ function Initiatives({ detail }: { detail: CommunityDetail }) {
   return (
     <Card hover={false} className="lg:col-span-2">
       <CardHeader
-        icon={<BadgeCheck className="h-4 w-4" />}
+        icon={<BadgeCheck aria-hidden="true" className="h-4 w-4" />}
         title="Sustainable initiatives"
         subtitle="Only administrator-verified records count toward statistics"
-        action={can && <Button size="sm" variant="outline" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setAddIni(true)}>Initiative</Button>}
+        action={can && <Button size="sm" variant="outline" icon={<Plus aria-hidden="true" className="h-3.5 w-3.5" />} onClick={() => setAddIni(true)}>Initiative</Button>}
       />
       {detail.initiatives.length === 0 ? (
         <EmptyState title="No initiatives yet" description="Track carpools, public-transport weeks, waste segregation or no-burn drives. Add records when they happen; there's no daily logging." />
@@ -272,7 +275,7 @@ function Initiatives({ detail }: { detail: CommunityDetail }) {
                   <p className="text-[11px] text-muted">{i.label}</p>
                 </div>
                 {can && (
-                  <Button size="sm" variant="ghost" icon={<Plus className="h-3 w-3" />} onClick={() => setRecFor(i.id)}>
+                  <Button size="sm" variant="ghost" icon={<Plus aria-hidden="true" className="h-3 w-3" />} onClick={() => setRecFor(i.id)}>
                     Record
                   </Button>
                 )}
@@ -285,11 +288,11 @@ function Initiatives({ detail }: { detail: CommunityDetail }) {
                     </span>
                     {r.verified ? (
                       <span className="flex items-center gap-1 text-emerald">
-                        <Check className="h-3 w-3" /> verified
+                        <Check aria-hidden="true" className="h-3 w-3" /> verified
                       </span>
                     ) : can ? (
-                      <button onClick={() => verify.mutate(r.id)} className="flex items-center gap-1 text-yellow-300 hover:underline">
-                        <CircleDashed className="h-3 w-3" /> verify
+                      <button type="button" onClick={() => verify.mutate(r.id)} aria-label={`Verify record from ${r.date} (${r.participants} participants)`} className="flex items-center gap-1 py-0.5 text-yellow-300 hover:underline">
+                        <CircleDashed aria-hidden="true" className="h-3 w-3" /> verify
                       </button>
                     ) : (
                       <span className="text-yellow-300">pending</span>
@@ -375,7 +378,7 @@ function Groups({ detail }: { detail: CommunityDetail }) {
   });
   return (
     <Card hover={false}>
-      <CardHeader icon={<Users className="h-4 w-4" />} title="Participating groups" subtitle="Telegram groups opted in by their administrators" />
+      <CardHeader icon={<Users aria-hidden="true" className="h-4 w-4" />} title="Participating groups" subtitle="Telegram groups opted in by their administrators" />
       {detail.groups.length === 0 ? (
         <p className="mb-3 text-xs text-muted">No groups connected. Add the AIRenv bot to a Telegram group, have a group admin send <code className="text-cyan">/optin</code>, then enter the code it returns.</p>
       ) : (
@@ -392,14 +395,14 @@ function Groups({ detail }: { detail: CommunityDetail }) {
               </div>
               {can && g.authorized && (
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
-                  <Tabs layoutId={`mode-${g.id}`} value={g.reply_mode} onChange={(v) => update.mutate({ gid: g.id, body: { reply_mode: v } })} tabs={[{ value: "approval", label: "Admin approval" }, { value: "auto", label: "Auto-reply" }]} />
-                  <button onClick={() => update.mutate({ gid: g.id, body: { authorized: false } })} className="text-faint hover:text-red-300">
+                  <Tabs label={`Reply mode for ${g.title}`} layoutId={`mode-${g.id}`} value={g.reply_mode} onChange={(v) => update.mutate({ gid: g.id, body: { reply_mode: v } })} tabs={[{ value: "approval", label: "Admin approval" }, { value: "auto", label: "Auto-reply" }]} />
+                  <button type="button" onClick={() => update.mutate({ gid: g.id, body: { authorized: false } })} className="py-1 text-faint hover:text-red-300">
                     Revoke & delete extracted events
                   </button>
                 </div>
               )}
               {can && !g.authorized && g.is_demo && (
-                <button onClick={() => update.mutate({ gid: g.id, body: { authorized: true } })} className="mt-2 text-xs text-cyan hover:underline">
+                <button type="button" onClick={() => update.mutate({ gid: g.id, body: { authorized: true } })} className="mt-2 py-1 text-xs text-cyan hover:underline">
                   Simulate group opt-in (demo)
                 </button>
               )}
@@ -409,8 +412,8 @@ function Groups({ detail }: { detail: CommunityDetail }) {
       )}
       {can && (
         <div className="flex gap-2">
-          <input className="input" placeholder="Group connect code" value={code} onChange={(e) => setCode(e.target.value)} />
-          <Button variant="outline" icon={<Link2 className="h-4 w-4" />} disabled={code.length < 4} loading={connect.isPending} onClick={() => connect.mutate()}>
+          <input className="input" aria-label="Group connect code" placeholder="Group connect code" value={code} onChange={(e) => setCode(e.target.value)} />
+          <Button variant="outline" icon={<Link2 aria-hidden="true" className="h-4 w-4" />} disabled={code.length < 4} loading={connect.isPending} onClick={() => connect.mutate()}>
             Connect
           </Button>
         </div>
@@ -428,11 +431,11 @@ function ConversationTester({ community }: { community: CommunityDetail["communi
   const shown = ["kind", "activity_type", "concern_type", "date", "time", "outdoor", "intensity"];
   return (
     <Card hover={false}>
-      <CardHeader icon={<MessageSquareText className="h-4 w-4 text-cyan" />} title="Conversation Intelligence test" subtitle="See what AIRenv would extract from a group message. Nothing is stored." />
-      <textarea className="input min-h-20 text-sm" value={text} onChange={(e) => setText(e.target.value)} maxLength={1000} />
+      <CardHeader icon={<MessageSquareText aria-hidden="true" className="h-4 w-4 text-cyan" />} title="Conversation Intelligence test" subtitle="See what AIRenv would extract from a group message. Nothing is stored." />
+      <textarea aria-label="Group message to analyse" className="input min-h-20 text-sm" value={text} onChange={(e) => setText(e.target.value)} maxLength={1000} />
       <div className="mt-2 flex flex-wrap gap-1.5">
         {["Let's burn the dry leaves near the gate on Sunday", "Cricket practice on Saturday 7 am in the ground", "Happy birthday Riya!"].map((s) => (
-          <button key={s} onClick={() => setText(s)} className="rounded-full border hairline px-2.5 py-0.5 text-[11px] text-muted hover:text-ink">
+          <button type="button" key={s} onClick={() => setText(s)} aria-label={`Use example message: ${s}`} className="rounded-full border hairline px-2.5 py-0.5 text-[11px] text-muted hover:text-ink">
             {s}
           </button>
         ))}
@@ -440,7 +443,8 @@ function ConversationTester({ community }: { community: CommunityDetail["communi
       <Button className="mt-3" variant="ai" size="sm" loading={m.isPending} disabled={text.trim().length < 3} onClick={() => m.mutate()}>
         Analyse message
       </Button>
-      {m.isError && <p className="mt-2 text-xs text-orange-300">{(m.error as Error).message}</p>}
+      {m.isError && <p role="alert" className="mt-2 text-xs text-orange-300">{(m.error as Error).message}</p>}
+      <div aria-live="polite">
       {m.data && (
         <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="mt-3 space-y-2 text-xs">
           {!m.data.relevant ? (
@@ -464,6 +468,7 @@ function ConversationTester({ community }: { community: CommunityDetail["communi
           <p className="text-[10px] text-faint">{m.data.privacy}</p>
         </motion.div>
       )}
+      </div>
     </Card>
   );
 }
@@ -542,15 +547,15 @@ export default function Community() {
         actions={
           <>
             {hasDemo ? (
-              <Button variant="ghost" size="sm" icon={<Trash2 className="h-3.5 w-3.5" />} loading={unseed.isPending} onClick={() => unseed.mutate()}>
+              <Button variant="ghost" size="sm" icon={<Trash2 aria-hidden="true" className="h-3.5 w-3.5" />} loading={unseed.isPending} onClick={() => unseed.mutate()}>
                 Remove demo data
               </Button>
             ) : (
-              <Button variant="outline" size="sm" icon={<FlaskConical className="h-3.5 w-3.5" />} loading={seed.isPending} onClick={() => seed.mutate()}>
+              <Button variant="outline" size="sm" icon={<FlaskConical aria-hidden="true" className="h-3.5 w-3.5" />} loading={seed.isPending} onClick={() => seed.mutate()}>
                 Load demo communities
               </Button>
             )}
-            <Button size="sm" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setCreate(true)}>
+            <Button size="sm" icon={<Plus aria-hidden="true" className="h-3.5 w-3.5" />} onClick={() => setCreate(true)}>
               New community
             </Button>
           </>
@@ -559,13 +564,13 @@ export default function Community() {
       <CreateCommunity open={create} onClose={() => setCreate(false)} />
 
       {list.isLoading ? (
-        <Skeleton className="h-64" />
+        <Skeleton className="h-64" label="Loading communities…" />
       ) : list.isError ? (
         <ErrorState message={(list.error as Error).message} />
       ) : communities.length === 0 ? (
         <Card hover={false}>
           <EmptyState
-            icon={<Users className="h-5 w-5" />}
+            icon={<Users aria-hidden="true" className="h-5 w-5" />}
             title="No communities yet"
             description="Create a community for your school, apartment or association, or load clearly labelled demo communities to explore the features."
             action={
@@ -582,9 +587,9 @@ export default function Community() {
         </Card>
       ) : (
         <>
-          <div className="mb-4 flex flex-wrap gap-2">
+          <div className="mb-4 flex flex-wrap gap-2" role="group" aria-label="Choose a community">
             {communities.map((c) => (
-              <button key={c.id} onClick={() => setSelected(c.id)} className={cn("relative rounded-xl border px-3.5 py-2 text-left text-sm transition-colors", selected === c.id ? "border-mint/30 bg-emerald/10" : "hairline bg-black/15 hover:bg-white/5")}>
+              <button type="button" key={c.id} aria-pressed={selected === c.id} onClick={() => setSelected(c.id)} className={cn("relative rounded-xl border px-3.5 py-2 text-left text-sm transition-colors", selected === c.id ? "border-mint/30 bg-emerald/10" : "hairline bg-black/15 hover:bg-white/5")}>
                 <span className="font-medium">{c.name}</span>
                 <span className="ml-2 text-[11px] text-muted">{TYPE_LABEL[c.type] ?? c.type}</span>
                 {(c.pending_advisories ?? 0) > 0 && <span className="ml-2 rounded-full bg-cyan/20 px-1.5 text-[10px] text-cyan">{c.pending_advisories} pending</span>}
@@ -593,22 +598,22 @@ export default function Community() {
           </div>
 
           {detail.isLoading || !d ? (
-            <Skeleton className="h-96" />
+            <Skeleton className="h-96" label="Loading community details…" />
           ) : (
             <div className="space-y-4">
               {d.community.is_demo && (
                 <div className="flex items-center gap-2 rounded-xl border border-violet/30 bg-violet/10 px-4 py-2 text-xs text-violet-100">
-                  <FlaskConical className="h-4 w-4 text-violet" /> Demo community. Events and initiatives are samples; their risk assessments use the real forecast.
+                  <FlaskConical aria-hidden="true" className="h-4 w-4 shrink-0 text-violet" /> Demo community. Events and initiatives are samples; their risk assessments use the real forecast.
                 </div>
               )}
               <OverviewStrip detail={d} />
               <div className="grid gap-4 lg:grid-cols-3">
                 <Card hover={false} className="lg:col-span-2">
                   <CardHeader
-                    icon={<CalendarClock className="h-4 w-4" />}
+                    icon={<CalendarClock aria-hidden="true" className="h-4 w-4" />}
                     title="Upcoming activities & alerts"
                     subtitle="From connected groups or added manually. Re-assessed on every refresh."
-                    action={d.community.can_manage && <Button size="sm" variant="outline" icon={<Plus className="h-3.5 w-3.5" />} onClick={() => setAddEvent(true)}>Activity</Button>}
+                    action={d.community.can_manage && <Button size="sm" variant="outline" icon={<Plus aria-hidden="true" className="h-3.5 w-3.5" />} onClick={() => setAddEvent(true)}>Activity</Button>}
                   />
                   {upcoming.length === 0 ? (
                     <EmptyState title="No upcoming activities" description="Activities announced in opted-in Telegram groups appear here automatically." />
@@ -622,7 +627,7 @@ export default function Community() {
                 </Card>
                 <div className="space-y-4">
                   <Card hover={false}>
-                    <CardHeader icon={<Flame className="h-4 w-4 text-orange-300" />} title="Environmental concerns" />
+                    <CardHeader icon={<Flame aria-hidden="true" className="h-4 w-4 text-orange-300" />} title="Environmental concerns" />
                     {concerns.length === 0 ? (
                       <p className="text-xs text-muted">No concerns detected. AIRenv flags open-burning discussions in opted-in groups.</p>
                     ) : (
@@ -645,12 +650,12 @@ export default function Community() {
                   {d.stats.monthly_verified_participation.length === 0 ? (
                     <EmptyState title="No verified participation yet" />
                   ) : (
-                    <div className="h-52">
+                    <div className="h-52" role="img" aria-label={seriesSummary("Verified participants per month", d.stats.monthly_verified_participation.map((r) => ({ label: String(r.month), value: types.reduce((sum, t) => sum + (Number(r[t]) || 0), 0) })), "participants")}>
                       <ResponsiveContainer>
                         <BarChart data={d.stats.monthly_verified_participation} margin={{ left: -20, right: 4, top: 8 }}>
                           <CartesianGrid stroke="rgba(124,231,180,0.06)" vertical={false} />
-                          <XAxis dataKey="month" tick={{ fill: "#5F7469", fontSize: 10 }} axisLine={false} tickLine={false} />
-                          <YAxis tick={{ fill: "#5F7469", fontSize: 10 }} axisLine={false} tickLine={false} />
+                          <XAxis dataKey="month" tick={{ fill: AXIS_TICK, fontSize: 10 }} axisLine={false} tickLine={false} />
+                          <YAxis tick={{ fill: AXIS_TICK, fontSize: 10 }} axisLine={false} tickLine={false} />
                           <Tooltip contentStyle={{ background: "#10231B", border: "1px solid rgba(124,231,180,0.15)", borderRadius: 12, fontSize: 12 }} />
                           <Legend wrapperStyle={{ fontSize: 10 }} />
                           {types.map((t, i) => (
@@ -664,7 +669,7 @@ export default function Community() {
                 </Card>
 
                 <div className="space-y-2 lg:col-span-2">
-                  <p className="label">Community recommendations</p>
+                  <h2 className="label">Community recommendations</h2>
                   {commRecs.length === 0 ? (
                     <Card hover={false}>
                       <p className="text-xs text-muted">No community-specific recommendations for current conditions.</p>

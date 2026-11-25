@@ -39,8 +39,10 @@ def test_redaction():
     assert "98765" not in out and "example.com" not in out and "@ravi" not in out
 
 
-def test_process_message_returns_structure_only(sample_bundle):
+def test_process_message_returns_structure_only(sample_bundle, monkeypatch):
     _, bundle = sample_bundle
+    # The sample series is centred on 2026-11-19 10:00; pin "now" so "tomorrow" stays inside the forecast.
+    monkeypatch.setattr(cp, "local_now", lambda series: datetime(2026, 11, 19, 10, 0))
     result = asyncio.run(cp.process_message("Tomorrow outdoor football match at 3 PM in the ground",
                                             bundle["series"], audience="school", use_ai=False))
     assert result["relevant"] is True

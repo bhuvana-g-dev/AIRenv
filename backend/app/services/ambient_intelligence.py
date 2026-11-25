@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from typing import Any
 
 from app.core.http import UpstreamError
@@ -43,7 +43,7 @@ def _to_aware(local_iso: str | None, offset_seconds: int) -> datetime | None:
 
 
 def freshness(observed: datetime | None, now: datetime | None = None) -> dict[str, Any]:
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     if observed is None:
         return {"age_minutes": None, "status": "unknown"}
     age = max(0, int((now - observed).total_seconds() // 60))
@@ -64,7 +64,7 @@ def _now_index(times: list[str], current_time: str | None) -> int:
 
 def _align(weather_hourly: dict[str, list[Any]], aq_times: list[str], key: str) -> list[Any]:
     wtimes = weather_hourly.get("time") or []
-    lookup = dict(zip(wtimes, weather_hourly.get(key) or []))
+    lookup = dict(zip(wtimes, weather_hourly.get(key) or [], strict=False))
     return [lookup.get(t) for t in aq_times]
 
 
@@ -162,7 +162,7 @@ def build_bundle(location: Location, aq: dict[str, Any], wx: dict[str, Any] | No
         "status": "demo" if is_demo else ("stale" if fresh["status"] == "stale" else "live"),
         "observed_at": observed.isoformat() if observed else None,
         "observed_local": aq.get("current_time"),
-        "fetched_at": datetime.now(timezone.utc).isoformat(),
+        "fetched_at": datetime.now(UTC).isoformat(),
         "timezone": aq.get("timezone"),
         "utc_offset": _offset_str(offset),
         "aqi": naqi,

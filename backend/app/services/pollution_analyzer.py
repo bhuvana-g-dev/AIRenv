@@ -8,9 +8,10 @@ period was actually used.
 """
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from statistics import mean
-from typing import Any, Sequence
+from typing import Any
 
 # (concentration upper bounds per category) for Good..Severe. Severe upper bound is an
 # extension used only to scale 401-500; the index is capped at 500.
@@ -58,7 +59,7 @@ def sub_index(pollutant: str, concentration: float | None) -> int | None:
             c = min(concentration, hi_c)
             span = hi_c - lo_c
             value = lo_i + (hi_i - lo_i) * ((c - lo_c) / span if span else 0)
-            return int(round(min(value, 500)))
+            return round(min(value, 500))
         lo_c = hi_c
     return 500
 

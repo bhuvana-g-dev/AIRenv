@@ -1,7 +1,8 @@
 import { motion } from "motion/react";
 import { Activity, BarChart3, Brain, CloudSun, Clock, Gauge, Radio, ShieldCheck, Sparkles, Wind } from "lucide-react";
 import { useState } from "react";
-import { DailyBars, HourProfile, METRIC_LABEL, TrendChart, type Metric } from "../components/charts";
+import { DailyBars, HourProfile, TrendChart } from "../components/charts";
+import { METRIC_LABEL, type Metric } from "../lib/metrics";
 import {
   AqiGauge,
   ConfidenceMeter,
@@ -16,7 +17,7 @@ import {
   TrendIndicator,
   WeatherStrip,
 } from "../components/env";
-import { Badge, Card, CardHeader, EmptyState, ErrorState, PageHeader, Skeleton, Tabs } from "../components/ui";
+import { Badge, Card, CardHeader, EmptyState, ErrorState, LoadingRegion, PageHeader, Skeleton, Tabs } from "../components/ui";
 import { ApiError } from "../lib/api";
 import { CATEGORY_COLORS } from "../lib/aqi";
 import { fmtNum, pct } from "../lib/format";
@@ -26,7 +27,7 @@ import type { Bundle } from "../lib/types";
 
 function DashboardSkeleton() {
   return (
-    <div className="space-y-4">
+    <LoadingRegion label="Loading air-quality dashboard…" className="space-y-4">
       <Skeleton className="h-10 w-80" />
       <div className="grid gap-4 lg:grid-cols-3">
         <Skeleton className="h-[340px]" />
@@ -34,7 +35,7 @@ function DashboardSkeleton() {
         <Skeleton className="h-[340px]" />
       </div>
       <Skeleton className="h-64" />
-    </div>
+    </LoadingRegion>
   );
 }
 
@@ -43,7 +44,7 @@ function StatusCard({ bundle }: { bundle: Bundle }) {
   const sevColor: Record<string, string> = { low: "#35D399", moderate: "#FACC15", elevated: "#FB923C", high: "#EF4444", severe: "#C0264F", unknown: "#94A89D" };
   return (
     <Card delay={0.1}>
-      <CardHeader icon={<Activity className="h-4 w-4" />} title="Environmental status" subtitle="Deterministic analysis of the latest data" />
+      <CardHeader icon={<Activity aria-hidden="true" className="h-4 w-4" />} title="Environmental status" subtitle="Deterministic analysis of the latest data" />
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <span className="text-xs text-muted">Severity</span>
@@ -64,7 +65,7 @@ function StatusCard({ bundle }: { bundle: Bundle }) {
         <div className="rounded-xl border hairline bg-black/15 p-3">
           <div className="flex items-center justify-between">
             <span className="flex items-center gap-1.5 text-[11px] text-muted">
-              <Wind className="h-3.5 w-3.5" /> Dispersion
+              <Wind aria-hidden="true" className="h-3.5 w-3.5" /> Dispersion
             </span>
             <span className="text-xs font-medium capitalize" style={{ color: { poor: "#FB923C", limited: "#FACC15", moderate: "#7CE7B4", good: "#35D399" }[a.dispersion.level] ?? "#94A89D" }}>
               {a.dispersion.level}
@@ -75,7 +76,7 @@ function StatusCard({ bundle }: { bundle: Bundle }) {
         <div className="rounded-xl border hairline bg-black/15 p-3">
           <div className="flex items-center justify-between">
             <span className="flex items-center gap-1.5 text-[11px] text-muted">
-              <ShieldCheck className="h-3.5 w-3.5" /> Data confidence
+              <ShieldCheck aria-hidden="true" className="h-3.5 w-3.5" /> Data confidence
             </span>
             <ConfidenceMeter level={a.confidence.level} score={a.confidence.score} />
           </div>
@@ -96,7 +97,7 @@ function BriefingCard() {
     <Card delay={0.15} className="lg:col-span-2">
       <div className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-br from-cyan/[0.06] via-transparent to-violet/[0.06]" />
       <CardHeader
-        icon={<Brain className="h-4 w-4 text-cyan" />}
+        icon={<Brain aria-hidden="true" className="h-4 w-4 text-cyan" />}
         title={<span className="text-gradient-ai">AI intelligence briefing</span>}
         subtitle="Rules decide and calculate; AI explains. Every figure comes from the data shown."
         action={
@@ -108,24 +109,24 @@ function BriefingCard() {
         }
       />
       {briefing.isLoading && (
-        <div className="space-y-3">
+        <LoadingRegion label="Generating briefing…" className="space-y-3">
           <Skeleton className="h-6 w-2/3" />
           <Skeleton className="h-16" />
           <Skeleton className="h-20" />
-        </div>
+        </LoadingRegion>
       )}
       {briefing.isError && <ErrorState title="Briefing unavailable" message={(briefing.error as Error).message} />}
       {briefing.data && (
         <div className="relative">
-          <motion.h2 key={briefing.data.headline} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="font-display text-xl font-semibold tracking-tight">
+          <motion.h3 key={briefing.data.headline} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="font-display text-xl font-semibold tracking-tight">
             {briefing.data.headline}
-          </motion.h2>
+          </motion.h3>
           <p className="mt-2 text-sm leading-relaxed text-ink/85">{briefing.data.summary}</p>
           {briefing.data.key_points.length > 0 && (
             <ul className="mt-3 grid gap-1.5 md:grid-cols-2">
               {briefing.data.key_points.map((k) => (
                 <li key={k} className="flex gap-2 text-xs leading-relaxed text-muted">
-                  <Sparkles className="mt-0.5 h-3 w-3 shrink-0 text-cyan" />
+                  <Sparkles aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0 text-cyan" />
                   {k}
                 </li>
               ))}
@@ -147,13 +148,13 @@ function BriefingCard() {
 
 function HistoryCard() {
   const history = useHistory();
-  if (history.isLoading) return <Skeleton className="h-[360px]" />;
+  if (history.isLoading) return <Skeleton className="h-[360px] lg:col-span-2" label="Loading history…" />;
   if (history.isError || !history.data) return <Card><ErrorState title="History unavailable" message={(history.error as Error)?.message} /></Card>;
   const c = history.data.comparisons;
   const cleanest = c.typically_cleanest_daytime_hours.map((h) => h.hour);
   return (
     <Card delay={0.2} className="lg:col-span-2">
-      <CardHeader icon={<BarChart3 className="h-4 w-4" />} title="Historical comparison" subtitle={c.basis} />
+      <CardHeader icon={<BarChart3 aria-hidden="true" className="h-4 w-4" />} title="Historical comparison" subtitle={c.basis} />
       <div className="mb-4 grid grid-cols-3 gap-3">
         {[
           { l: "vs yesterday, same hour", v: c.vs_yesterday_same_hour.change_pct, s: c.vs_yesterday_same_hour.value },
@@ -191,28 +192,29 @@ function FeedCard() {
   return (
     <Card delay={0.25}>
       <CardHeader
-        icon={<Radio className="h-4 w-4" />}
+        icon={<Radio aria-hidden="true" className="h-4 w-4" />}
         title="Live intelligence feed"
         subtitle="Events detected by AIRenv's background processing"
         action={
-          <span className="relative mt-1 flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald opacity-60" />
+          <span className="relative mt-1 flex h-2 w-2" aria-hidden="true">
+            <span className="absolute inline-flex h-full w-full motion-safe:animate-ping rounded-full bg-emerald opacity-60" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald" />
           </span>
         }
       />
       {feed.isLoading ? (
-        <div className="space-y-3">
+        <LoadingRegion label="Loading feed…" className="space-y-3">
           {[0, 1, 2].map((i) => (
             <Skeleton key={i} className="h-12" />
           ))}
-        </div>
+        </LoadingRegion>
       ) : feed.data && feed.data.items.length > 0 ? (
-        <div className="max-h-[420px] overflow-y-auto pr-1">
-          <FeedList items={feed.data.items} max={20} />
+        // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- scrollable region must be keyboard-scrollable (WCAG 2.1.1)
+        <div className="max-h-[420px] overflow-y-auto pr-1" role="region" aria-label="Live intelligence feed events" tabIndex={0}>
+          <FeedList items={feed.data.items} max={20} live label="Detected events, newest first" />
         </div>
       ) : (
-        <EmptyState icon={<Clock className="h-5 w-5" />} title="Waiting for the first scheduled check" description="Events appear here as the scheduler detects changes: category shifts, rising pollution, forecast deterioration and community event risks." />
+        <EmptyState icon={<Clock aria-hidden="true" className="h-5 w-5" />} title="Waiting for the first scheduled check" description="Events appear here as the scheduler detects changes: category shifts, rising pollution, forecast deterioration and community event risks." />
       )}
     </Card>
   );
@@ -247,7 +249,7 @@ export default function Dashboard() {
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="overflow-hidden">
           <div className="pointer-events-none absolute inset-0 opacity-60" style={{ background: `radial-gradient(600px circle at 50% 0%, ${cat ? CATEGORY_COLORS[cat.key] : "#5F7469"}1f, transparent 60%)` }} />
-          <CardHeader icon={<Gauge className="h-4 w-4" />} title="Current air quality" subtitle="Indian National AQI, estimated" />
+          <CardHeader icon={<Gauge aria-hidden="true" className="h-4 w-4" />} title="Current air quality" subtitle="Indian National AQI, estimated" />
           <div className="relative flex flex-col items-center">
             <AqiGauge value={snapshot.aqi.value} category={cat} />
             <p className="mt-3 text-center text-xs leading-relaxed text-muted">{cat?.health}</p>
@@ -267,7 +269,7 @@ export default function Dashboard() {
         </Card>
 
         <Card delay={0.05}>
-          <CardHeader icon={<CloudSun className="h-4 w-4" />} title="Pollutants & weather" subtitle="Current hourly values · bars show CPCB sub-index" />
+          <CardHeader icon={<CloudSun aria-hidden="true" className="h-4 w-4" />} title="Pollutants & weather" subtitle="Current hourly values · bars show CPCB sub-index" />
           <PollutantGrid snapshot={snapshot} />
           <div className="mt-4">
             <WeatherStrip snapshot={snapshot} />
@@ -282,13 +284,13 @@ export default function Dashboard() {
 
         <Card delay={0.2} className="lg:col-span-3">
           <CardHeader
-            icon={<Activity className="h-4 w-4" />}
+            icon={<Activity aria-hidden="true" className="h-4 w-4" />}
             title="Pollution trend & forecast"
             subtitle={<>Solid: model history · dashed violet: model forecast (uncertain) · {METRIC_LABEL[metric].label}</>}
             action={
               <div className="flex flex-wrap justify-end gap-2">
-                <Tabs layoutId="metric" value={metric} onChange={setMetric} tabs={[{ value: "aqi_in", label: "NAQI" }, { value: "pm2_5", label: "PM2.5" }, { value: "pm10", label: "PM10" }, { value: "no2", label: "NO₂" }]} />
-                <Tabs layoutId="range" value={range} onChange={setRange} tabs={[{ value: "near", label: "48h + 3d" }, { value: "week", label: "7 days" }]} />
+                <Tabs label="Chart metric" layoutId="metric" value={metric} onChange={setMetric} tabs={[{ value: "aqi_in", label: "NAQI" }, { value: "pm2_5", label: "PM2.5" }, { value: "pm10", label: "PM10" }, { value: "no2", label: "NO₂" }]} />
+                <Tabs label="Time range" layoutId="range" value={range} onChange={setRange} tabs={[{ value: "near", label: "48h + 3d" }, { value: "week", label: "7 days" }]} />
               </div>
             }
           />
@@ -324,7 +326,7 @@ function BestWindowsCard({ bundle }: { bundle: Bundle }) {
   const worst = cands.length ? cands[cands.length - 1] : null;
   return (
     <Card delay={0.25}>
-      <CardHeader icon={<Clock className="h-4 w-4" />} title="Cleaner windows ahead" subtitle="Lowest forecast PM2.5 for a 2-hour daytime activity, next 36 h" />
+      <CardHeader icon={<Clock aria-hidden="true" className="h-4 w-4" />} title="Cleaner windows ahead" subtitle="Lowest forecast PM2.5 for a 2-hour daytime activity, next 36 h" />
       {chosen.length === 0 ? (
         <EmptyState title="No daytime forecast hours available" />
       ) : (

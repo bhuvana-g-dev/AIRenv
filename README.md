@@ -100,14 +100,21 @@ Frontend (`frontend/.env`): `VITE_API_BASE_URL`, and optionally `VITE_FIREBASE_A
 - **Impact honesty.** Exposure (inhaled dose = concentration × EPA inhalation rate × time), emissions (DESNZ-based factors, Indian grid 0.716 kg/kWh, ±25%) and community participation (admin-verified counts) are kept separate. None of them is presented as a change in local AQI.
 - **Privacy.** Groups opt in at group level. Phone numbers, e-mails, mentions and links are redacted before any processing. Only structured fields are stored, with automatic expiry. `/optout` or revoking a group deletes its extracted events. Users can export or delete their data. Assistant history stays in the browser.
 - **No notification spam.** 12-hour deduplication keys, per-category cooldowns that only an escalation can break, quiet hours (critical alerts still go through) and a daily cap.
-- **Security.** Firebase ID-token verification, roles (`member`, `community_admin`, `admin`) checked on every community action, Pydantic validation of all inputs, per-IP rate limits (stricter for AI endpoints), a Telegram webhook secret, restricted CORS and deny-by-default Firestore rules.
+- **Security.** Firebase ID-token verification, roles (`member`, `community_admin`, `admin`) checked on every community action, and resource ownership checked on nested IDs. All inputs are validated with Pydantic. Location IDs are derived from coordinates, never taken from the client. Per-IP rate limits are stricter for AI endpoints, return `Retry-After`, and trust `X-Forwarded-For` only for `TRUSTED_PROXY_HOPS` proxies. Manual refresh needs sign-in and has a per-location cooldown. Request bodies are capped at 256 KB. Responses carry CSP, HSTS (production), `X-Frame-Options` and `nosniff`; `vercel.json` sets a CSP for the SPA. The Telegram webhook secret is compared in constant time. Upstream error messages never include URLs, so API keys and the bot token cannot leak through `/api/system/status`. In production the app refuses to start with local auth, wildcard CORS or a missing webhook secret, and API docs are disabled. Firestore rules deny by default.
 
 ## Tests
 
 ```powershell
-cd backend;  .\.venv\Scripts\python -m pytest -q     # NAQI, trends, extraction, redaction, dedup/cooldowns, impact, API flows
-cd frontend; npm run typecheck; npm test; npm run build
+cd backend
+.\.venv\Scripts\python -m pip install -r requirements-dev.txt
+.\.venv\Scripts\python -m ruff check .                    # lint, incl. bandit security rules
+.\.venv\Scripts\python -m pytest --cov=app               # 610 tests, 97% line coverage
+
+cd frontend
+npm run typecheck; npm run lint; npm test; npm run build  # ESLint + jsx-a11y; 94 tests incl. axe checks
 ```
+
+Backend tests cover NAQI breakpoints, extraction and redaction, alert dedup and cooldowns, impact maths, the scheduler, Telegram flows, every API route, access control and the security middleware. They run offline. Frontend tests cover the API client, state, formatting, colour-contrast tokens (WCAG AA) and component accessibility: dialogs, focus traps, tabs, switches, skip link and live regions. GitHub Actions (`.github/workflows/ci.yml`) runs all of these on every push and fails if backend coverage drops below 90%.
 
 ## Data sources and attribution
 

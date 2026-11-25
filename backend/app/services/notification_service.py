@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.core.events_bus import bus
@@ -34,7 +34,7 @@ def in_quiet_hours(prefs: dict[str, Any], local_now: datetime) -> bool:
 async def evaluate(user: dict[str, Any], signal: dict[str, Any], local_now: datetime,
                    now: datetime | None = None) -> tuple[bool, str]:
     """Decide whether a signal should become a notification for this user. Returns (send, reason)."""
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     prefs = user.get("notification_prefs") or {}
     category, severity = signal["category"], signal["severity"]
     if not (prefs.get("categories") or {}).get(category, True):
@@ -46,7 +46,7 @@ async def evaluate(user: dict[str, Any], signal: dict[str, Any], local_now: date
         return False, "positive disabled"
     store = get_store()
     uid = user["uid"]
-    dedup_id = hashlib.sha1(f"{uid}|{signal['key']}".encode()).hexdigest()[:20]
+    dedup_id = hashlib.sha1(f"{uid}|{signal['key']}".encode(), usedforsecurity=False).hexdigest()[:20]
     existing = await store.get("notifications", dedup_id)
     if existing and existing["created_at"] > (now - timedelta(hours=DEDUP_HOURS)).isoformat():
         return False, "duplicate"
@@ -75,7 +75,7 @@ async def dispatch(user: dict[str, Any], signal: dict[str, Any], local_now: date
         log.debug("Suppressed %s for %s: %s", signal["key"], user["uid"], reason)
         return None
     uid = user["uid"]
-    doc_id = hashlib.sha1(f"{uid}|{signal['key']}".encode()).hexdigest()[:20]
+    doc_id = hashlib.sha1(f"{uid}|{signal['key']}".encode(), usedforsecurity=False).hexdigest()[:20]
     prefs = user.get("notification_prefs") or {}
     doc = {
         "uid": uid,
@@ -87,7 +87,7 @@ async def dispatch(user: dict[str, Any], signal: dict[str, Any], local_now: date
         "message": signal["message"],
         "data": signal.get("data"),
         "location_id": (user.get("location") or {}).get("id"),
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "read": False,
         "delivery": {"in_app": bool(prefs.get("in_app", True)), "telegram": "not_requested"},
     }

@@ -1,11 +1,14 @@
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import type { User } from "firebase/auth";
-import { AppShell } from "./components/AppShell";
-import { Skeleton } from "./components/ui";
+import { LoadingRegion, Skeleton } from "./components/ui";
 import { firebaseEnabled, onAuthChange } from "./lib/auth";
-import Landing from "./pages/Landing";
+import { titleForPath, useDocumentTitle } from "./lib/useDocumentTitle";
 
+// The app opens first; the product overview (former landing page) lives at /about and is
+// linked from the "How to use" guide in the app header.
+const Landing = lazy(() => import("./pages/Landing"));
+const AppShell = lazy(() => import("./components/AppShell").then((m) => ({ default: m.AppShell })));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const AirMap = lazy(() => import("./pages/AirMap"));
 const Assistant = lazy(() => import("./pages/Assistant"));
@@ -18,7 +21,7 @@ const NotFound = lazy(() => import("./pages/NotFound"));
 
 function PageFallback() {
   return (
-    <div className="space-y-4">
+    <LoadingRegion label="Loading page…" className="space-y-4">
       <Skeleton className="h-8 w-64" />
       <div className="grid gap-4 md:grid-cols-3">
         <Skeleton className="h-48" />
@@ -26,6 +29,14 @@ function PageFallback() {
         <Skeleton className="h-48" />
       </div>
       <Skeleton className="h-72" />
+    </LoadingRegion>
+  );
+}
+
+function FullScreenFallback({ label }: { label: string }) {
+  return (
+    <div className="grid min-h-screen place-items-center">
+      <Skeleton className="h-10 w-48" label={label} />
     </div>
   );
 }
@@ -34,15 +45,10 @@ function AuthGate({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null | undefined>(firebaseEnabled ? undefined : null);
   useEffect(() => (firebaseEnabled ? onAuthChange(setUser) : undefined), []);
   if (!firebaseEnabled) return <>{children}</>;
-  if (user === undefined)
-    return (
-      <div className="grid min-h-screen place-items-center">
-        <Skeleton className="h-10 w-48" />
-      </div>
-    );
+  if (user === undefined) return <FullScreenFallback label="Checking sign-in…" />;
   if (!user)
     return (
-      <Suspense fallback={null}>
+      <Suspense fallback={<FullScreenFallback label="Loading sign-in…" />}>
         <SignIn />
       </Suspense>
     );
@@ -52,14 +58,19 @@ function AuthGate({ children }: { children: ReactNode }) {
 const page = (el: ReactNode) => <Suspense fallback={<PageFallback />}>{el}</Suspense>;
 
 export default function App() {
+  const { pathname } = useLocation();
+  useDocumentTitle(titleForPath(pathname));
   return (
     <Routes>
-      <Route path="/" element={<Landing />} />
+      <Route path="/" element={<Navigate to="/app" replace />} />
+      <Route path="/about" element={<Suspense fallback={<FullScreenFallback label="Loading…" />}><Landing /></Suspense>} />
       <Route
         path="/app"
         element={
           <AuthGate>
-            <AppShell />
+            <Suspense fallback={<FullScreenFallback label="Loading AIRenv…" />}>
+              <AppShell />
+            </Suspense>
           </AuthGate>
         }
       >

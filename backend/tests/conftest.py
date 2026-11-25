@@ -9,10 +9,10 @@ os.environ["GEMINI_API_KEY"] = ""
 os.environ["AUTH_MODE"] = "local"
 os.environ["FIREBASE_CREDENTIALS"] = ""
 
-from app.db.store import SQLiteStore, set_store  # noqa: E402
-from app.services import ambient_intelligence as ambient  # noqa: E402
-from app.services import environmental_data as env  # noqa: E402
-from app.services.location_service import make_location  # noqa: E402
+from app.db.store import SQLiteStore, set_store
+from app.services import ambient_intelligence as ambient
+from app.services import environmental_data as env
+from app.services.location_service import make_location
 
 
 @pytest.fixture(autouse=True)

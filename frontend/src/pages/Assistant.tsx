@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { Bot, Info, Send, Sparkles, Trash2, User } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { DemoBanner, RecommendationCard } from "../components/env";
@@ -55,9 +55,9 @@ function Markdownish({ text }: { text: string }) {
 
 function Typing() {
   return (
-    <div className="flex items-center gap-1.5 px-1 py-2">
+    <div role="status" className="flex items-center gap-1.5 px-1 py-2">
       {[0, 1, 2].map((i) => (
-        <motion.span key={i} className="h-1.5 w-1.5 rounded-full bg-cyan" animate={{ opacity: [0.3, 1, 0.3], y: [0, -3, 0] }} transition={{ duration: 1, repeat: Infinity, delay: i * 0.15 }} />
+        <motion.span key={i} aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-cyan" animate={{ opacity: [0.3, 1, 0.3], y: [0, -3, 0] }} transition={{ duration: 1, repeat: Infinity, delay: i * 0.15 }} />
       ))}
       <span className="ml-2 text-xs text-muted">Reading current conditions…</span>
     </div>
@@ -78,11 +78,12 @@ export default function Assistant() {
   const bundle = useBundle();
   const ask = useAssistant();
   const endRef = useRef<HTMLDivElement>(null);
+  const reduce = useReducedMotion();
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(messages.slice(-40)));
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages, ask.isPending]);
+    endRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "end" });
+  }, [messages, ask.isPending, reduce]);
 
   const send = (q: string) => {
     const question = q.trim();
@@ -120,7 +121,7 @@ export default function Assistant() {
         }
         actions={
           messages.length > 0 && (
-            <Button variant="ghost" size="sm" icon={<Trash2 className="h-3.5 w-3.5" />} onClick={() => setMessages([])}>
+            <Button variant="ghost" size="sm" icon={<Trash2 aria-hidden="true" className="h-3.5 w-3.5" />} onClick={() => setMessages([])}>
               Clear history
             </Button>
           )
@@ -128,13 +129,14 @@ export default function Assistant() {
       />
 
       <div className="glass flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl">
-        <div className="flex-1 space-y-5 overflow-y-auto p-4 md:p-6">
+        {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- the scrollable conversation log must be keyboard-scrollable (WCAG 2.1.1) */}
+        <div role="log" aria-label="Conversation with AIRenv AI" aria-live="polite" tabIndex={0} className="flex-1 space-y-5 overflow-y-auto p-4 md:p-6">
           {messages.length === 0 && (
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mx-auto max-w-2xl py-8 text-center">
               <div className="relative mx-auto mb-5 grid h-16 w-16 place-items-center">
                 <motion.div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-cyan/40 to-violet/40 blur-xl" animate={{ scale: [1, 1.15, 1], opacity: [0.6, 0.9, 0.6] }} transition={{ duration: 3, repeat: Infinity }} />
                 <div className="relative grid h-16 w-16 place-items-center rounded-2xl border border-cyan/30 bg-bg-2">
-                  <Sparkles className="h-7 w-7 text-cyan" />
+                  <Sparkles aria-hidden="true" className="h-7 w-7 text-cyan" />
                 </div>
               </div>
               <h2 className="font-display text-xl font-semibold">Ask about the air around you</h2>
@@ -161,11 +163,12 @@ export default function Assistant() {
             {messages.map((m) => (
               <motion.div key={m.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
                 <div className={m.role === "user" ? "flex max-w-[85%] flex-row-reverse gap-3" : "flex max-w-[92%] gap-3 md:max-w-[80%]"}>
-                  <span className={m.role === "user" ? "grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-emerald/15 text-mint" : "grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-cyan/25 to-violet/25 text-cyan"}>
-                    {m.role === "user" ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
+                  <span aria-hidden="true" className={m.role === "user" ? "grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-emerald/15 text-mint" : "grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-cyan/25 to-violet/25 text-cyan"}>
+                    {m.role === "user" ? <User aria-hidden="true" className="h-4 w-4" /> : <Bot aria-hidden="true" className="h-4 w-4" />}
                   </span>
                   <div className="min-w-0">
                     <div className={m.role === "user" ? "rounded-2xl rounded-tr-sm bg-emerald/15 px-4 py-2.5 text-sm" : m.error ? "rounded-2xl rounded-tl-sm border border-orange-400/30 bg-orange-400/10 px-4 py-3 text-sm text-orange-100" : "rounded-2xl rounded-tl-sm border hairline bg-black/25 px-4 py-3 text-sm leading-relaxed text-ink/90"}>
+                      <span className="sr-only">{m.role === "user" ? "You said:" : m.error ? "AIRenv AI error:" : "AIRenv AI replied:"}</span>
                       <Markdownish text={m.content} />
                     </div>
                     {m.reply && (
@@ -181,7 +184,7 @@ export default function Assistant() {
                           ))}
                         </div>
                         <p className="flex items-start gap-1.5 text-[11px] text-faint">
-                          <Info className="mt-0.5 h-3 w-3 shrink-0" />
+                          <Info aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0" />
                           {m.reply.uncertainty}
                         </p>
                         <div className="flex flex-wrap items-center gap-2">
@@ -227,8 +230,8 @@ export default function Assistant() {
               className="input max-h-32 min-h-[44px] resize-none"
               aria-label="Message AIRenv AI"
             />
-            <Button type="submit" variant="ai" className="h-11 w-11 shrink-0 !px-0" disabled={!input.trim()} loading={ask.isPending} aria-label="Send">
-              {!ask.isPending && <Send className="h-4 w-4" />}
+            <Button type="submit" variant="ai" className="h-11 w-11 shrink-0 !px-0" disabled={!input.trim()} loading={ask.isPending} aria-label="Send message">
+              {!ask.isPending && <Send aria-hidden="true" className="h-4 w-4" />}
             </Button>
           </div>
           <p className="mt-2 text-[10px] text-faint">Conversation history is stored only in this browser. AIRenv AI gives general guidance, not medical advice.</p>

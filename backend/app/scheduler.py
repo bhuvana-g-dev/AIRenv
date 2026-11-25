@@ -3,8 +3,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
+
+from pydantic import ValidationError
 
 from app.config import get_settings
 from app.core.events_bus import bus
@@ -41,21 +43,19 @@ async def tracked_locations() -> list[Location]:
             if loc and loc.get("id") and loc["id"] not in locs:
                 try:
                     locs[loc["id"]] = Location(**loc)
-                except Exception:
-                    continue
+                except (TypeError, ValidationError):
+                    log.warning("Skipping invalid stored location in %s/%s", coll, doc.get("id"))
     return list(locs.values())
 
 
 def _local_now(series: dict[str, Any]) -> datetime:
-    return cp._local_now(series)
+    return cp.local_now(series)
 
 
 async def _assess_community_events(loc: Location, bundle: dict[str, Any]) -> None:
     store = get_store()
     series = bundle["series"]
-    for c in await store.query("communities"):
-        if (c.get("location") or {}).get("id") != loc.id:
-            continue
+    for c in await store.query("communities", [("location.id", "==", loc.id)]):
         audience = "school" if c.get("type") == "school" else "general"
         for ev in await cs.events_for(c["id"]):
             if ev.get("kind") != "activity" or (ev.get("advisory") or {}).get("status") in ("sent", "dismissed"):
@@ -95,7 +95,7 @@ async def refresh_location(loc: Location) -> dict[str, Any]:
                                         "title": "Live data temporarily unavailable",
                                         "detail": "Showing the last stored reading. " +
                                                   "; ".join(e["message"] for e in snap.get("errors", [])),
-                                        "dedup": f"down:{loc.id}:{datetime.now(timezone.utc):%Y%m%d%H}"})
+                                        "dedup": f"down:{loc.id}:{datetime.now(UTC):%Y%m%d%H}"})
             await store.update("latest_snapshots", loc.id, {"errors": snap.get("errors", [])})
         return snap
     await ha.record_snapshot(snap)
@@ -105,7 +105,7 @@ async def refresh_location(loc: Location) -> dict[str, Any]:
     bus.publish(f"location:{loc.id}", "snapshot.updated", {"location_id": loc.id, "observed_at": snap["observed_at"],
                                                           "aqi": snap["aqi"].get("value"),
                                                           "fetched_at": snap["fetched_at"]})
-    users = [u for u in await store.query("users") if (u.get("location") or {}).get("id") == loc.id]
+    users = await store.query("users", [("location.id", "==", loc.id)])
     local_now = _local_now(series)
     for user in users:
         for sig in rd.detect(snap, series, user):
@@ -116,7 +116,7 @@ async def refresh_location(loc: Location) -> dict[str, Any]:
 
 async def run_once() -> dict[str, Any]:
     global _last_prune
-    started = datetime.now(timezone.utc)
+    started = datetime.now(UTC)
     errors: list[str] = []
     locs = await tracked_locations()
     for loc in locs:
@@ -131,7 +131,7 @@ async def run_once() -> dict[str, Any]:
         await prune()
         _last_prune = started
     state.update({"last_run_at": started.isoformat(), "locations": len(locs), "last_errors": errors,
-                  "last_duration_s": round((datetime.now(timezone.utc) - started).total_seconds(), 2),
+                  "last_duration_s": round((datetime.now(UTC) - started).total_seconds(), 2),
                   "runs": state["runs"] + 1})
     return state
 
@@ -139,14 +139,14 @@ async def run_once() -> dict[str, Any]:
 async def prune() -> None:
     s = get_settings()
     store = get_store()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     try:
         await ha.prune(s.snapshot_retention_days)
         for ev in await store.query("community_events", [("expires_at", "<", now)]):
             await store.delete("community_events", ev["id"])
         for code in await store.query("tg_link_codes", [("expires_at", "<", now)]):
             await store.delete("tg_link_codes", code["id"])
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=60)).isoformat()
+        cutoff = (datetime.now(UTC) - timedelta(days=60)).isoformat()
         for n in await store.query("notifications", [("created_at", "<", cutoff)]):
             await store.delete("notifications", n["id"])
     except Exception as exc:
@@ -161,7 +161,7 @@ async def _loop() -> None:
             await run_once()
         except Exception:
             log.exception("Scheduler run failed")
-        state["next_run_at"] = (datetime.now(timezone.utc) + timedelta(seconds=interval)).isoformat()
+        state["next_run_at"] = (datetime.now(UTC) + timedelta(seconds=interval)).isoformat()
         await asyncio.sleep(interval)
 
 

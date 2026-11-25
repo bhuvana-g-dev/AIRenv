@@ -6,10 +6,11 @@ deterministic fallback is used.
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import re
-from typing import Any, TypeVar
+from typing import Any
 
 from pydantic import BaseModel, ValidationError
 
@@ -18,7 +19,6 @@ from app.core.http import client
 
 log = logging.getLogger("airenv.ai")
 
-T = TypeVar("T", bound=BaseModel)
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 LANGUAGES = {"en": "English", "hi": "Hindi", "ta": "Tamil", "bn": "Bengali", "mr": "Marathi", "te": "Telugu",
@@ -46,10 +46,8 @@ def _numbers(obj: Any) -> set[float]:
     text = json.dumps(obj, ensure_ascii=False, default=str)
     out: set[float] = set()
     for m in _NUM.findall(text):
-        try:
+        with contextlib.suppress(ValueError):
             out.add(float(m.replace(",", "")))
-        except ValueError:
-            pass
     return out
 
 
@@ -81,8 +79,15 @@ def available() -> bool:
     return bool(get_settings().gemini_api_key)
 
 
-async def generate_json(task: str, context: dict[str, Any], schema_model: type[T], *, language: str = "en",
-                        history: list[dict[str, str]] | None = None, temperature: float = 0.3) -> T | None:
+async def generate_json[T: BaseModel](
+    task: str,
+    context: dict[str, Any],
+    schema_model: type[T],
+    *,
+    language: str = "en",
+    history: list[dict[str, str]] | None = None,
+    temperature: float = 0.3,
+) -> T | None:
     """Call Gemini and return a validated model, or None on any failure (callers fall back to rules)."""
     s = get_settings()
     if not s.gemini_api_key:
@@ -129,6 +134,8 @@ async def generate_json(task: str, context: dict[str, Any], schema_model: type[T
 def _to_gemini_schema(schema: dict[str, Any]) -> dict[str, Any]:
     """Convert a Pydantic JSON schema to the OpenAPI subset accepted by Gemini (inline $refs, drop titles)."""
     defs = schema.get("$defs", {})
+    dropped = {"title", "$defs", "default", "additionalProperties", "examples", "maxLength", "minLength",
+               "pattern"}
 
     def conv(node: Any) -> Any:
         if isinstance(node, dict):
@@ -141,10 +148,11 @@ def _to_gemini_schema(schema: dict[str, Any]) -> dict[str, Any]:
                 return base
             out: dict[str, Any] = {}
             for k, v in node.items():
-                if k in ("title", "$defs", "default", "additionalProperties", "examples", "maxLength",
-                         "minLength", "pattern"):
-                    continue
-                out[k] = conv(v)
+                if k == "properties" and isinstance(v, dict):
+                    # Keys here are field names (a field may be called "title"); keep them all.
+                    out[k] = {name: conv(sub) for name, sub in v.items()}
+                elif k not in dropped:
+                    out[k] = conv(v)
             return out
         if isinstance(node, list):
             return [conv(x) for x in node]

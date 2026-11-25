@@ -1,0 +1,58 @@
+[project]
+name = "airenv-backend"
+version = "1.1.0"
+description = "AIRenv environmental intelligence API"
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = [".venv", "data"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # import sorting
+    "B",        # bugbear
+    "UP",       # pyupgrade
+    "S",        # bandit security checks
+    "ASYNC",    # async pitfalls
+    "SIM",      # simplifications
+    "RUF",      # ruff-specific
+    "C4",       # comprehensions
+    "PIE",
+    "RET",
+]
+ignore = [
+    "B008",    # FastAPI's Depends()/Query() in argument defaults is the documented pattern
+    "RUF001", "RUF002", "RUF003",  # intentional unicode (µg/m³, →, ×) in user-facing text
+    "S311",    # random is not used for security
+    "SIM108",  # ternaries are not always clearer
+    "RET504", "RET505",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests: asserts, fake secrets, parallel-list zips, and fakes mirroring httpx's `timeout=` signature.
+"tests/**" = ["S101", "S105", "S106", "S108", "B017", "B905", "RUF012", "ASYNC109"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+filterwarnings = [
+    # Starlette's TestClient nags about a future httpx package rename; not actionable here.
+    "ignore::DeprecationWarning:fastapi.testclient",
+    "ignore:Using `httpx` with `starlette.testclient`",
+]
+
+[tool.coverage.run]
+source = ["app"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:"]

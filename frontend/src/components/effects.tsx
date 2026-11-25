@@ -1,21 +1,21 @@
 import { useEffect, useId, useRef } from "react";
 import { useReducedMotion } from "motion/react";
-import { cn } from "./ui";
+import { cn } from "../lib/cn";
 
 /** Soft, slowly drifting atmospheric gradients. Pure CSS transforms (GPU-friendly). */
 export function Aurora({ className, intensity = 1 }: { className?: string; intensity?: number }) {
   return (
     <div aria-hidden className={cn("pointer-events-none absolute inset-0 overflow-hidden", className)}>
       <div
-        className="absolute -left-[20%] -top-[30%] h-[80vh] w-[80vw] rounded-full blur-[110px] animate-aurora"
+        className="absolute -left-[20%] -top-[30%] h-[80vh] w-[80vw] rounded-full blur-[110px] animate-aurora motion-reduce:animate-none"
         style={{ background: "radial-gradient(closest-side, rgba(53,211,153,0.22), transparent)", opacity: intensity }}
       />
       <div
-        className="absolute -right-[15%] top-[10%] h-[70vh] w-[60vw] rounded-full blur-[120px] animate-aurora"
+        className="absolute -right-[15%] top-[10%] h-[70vh] w-[60vw] rounded-full blur-[120px] animate-aurora motion-reduce:animate-none"
         style={{ background: "radial-gradient(closest-side, rgba(85,214,232,0.16), transparent)", animationDelay: "-8s", opacity: intensity }}
       />
       <div
-        className="absolute bottom-[-30%] left-[20%] h-[70vh] w-[70vw] rounded-full blur-[130px] animate-aurora"
+        className="absolute bottom-[-30%] left-[20%] h-[70vh] w-[70vw] rounded-full blur-[130px] animate-aurora motion-reduce:animate-none"
         style={{ background: "radial-gradient(closest-side, rgba(124,231,180,0.12), transparent)", animationDelay: "-16s", opacity: intensity }}
       />
     </div>

@@ -4,7 +4,7 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.core.http import UpstreamError, get_json
 
@@ -12,19 +12,29 @@ GEOCODE_URL = "https://geocoding-api.open-meteo.com/v1/search"
 REVERSE_URL = "https://nominatim.openstreetmap.org/reverse"
 
 
-class Location(BaseModel):
-    id: str
-    name: str
-    lat: float = Field(ge=-90, le=90)
-    lon: float = Field(ge=-180, le=180)
-    country: str | None = None
-    admin1: str | None = None
-    timezone: str | None = None
+LOCATION_ID_PATTERN = r"^-?\d{1,2}\.\d{2}_-?\d{1,3}\.\d{2}$"
 
 
 def location_id(lat: float, lon: float) -> str:
     # ~1 km grid; also the resolution at which we cache model data.
     return f"{lat:.2f}_{lon:.2f}"
+
+
+class Location(BaseModel):
+    id: str = ""
+    name: str = Field(min_length=1, max_length=120)
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+    country: str | None = Field(None, max_length=80)
+    admin1: str | None = Field(None, max_length=80)
+    timezone: str | None = Field(None, max_length=64)
+
+    @model_validator(mode="after")
+    def _derive_id(self) -> Location:
+        # The id is a cache key, storage key and SSE topic. Always derive it from the coordinates
+        # so a client-supplied value can never point at another location's data.
+        self.id = location_id(self.lat, self.lon)
+        return self
 
 
 def make_location(name: str, lat: float, lon: float, **extra: Any) -> Location:

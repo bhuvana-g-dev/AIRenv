@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import asyncio
+import secrets
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.config import get_settings
 from app.core.events_bus import bus
@@ -15,9 +16,10 @@ from app.core.security import CurrentUser, get_current_user, new_token
 from app.db.store import get_store
 from app.services import notification_service as ns
 from app.services import telegram_integration as tg
-from app.services.location_service import Location
+from app.services.location_service import LOCATION_ID_PATTERN, Location
 
 router = APIRouter(prefix="/api", tags=["account"])
+NOTIFICATION_CATEGORIES = ("critical", "deterioration", "forecast", "community", "recommendation", "positive")
 
 
 # ----------------------------------------------------------------------------- profile
@@ -43,6 +45,14 @@ class NotificationPrefs(BaseModel):
     quiet_hours: QuietHours = QuietHours()
     categories: dict[str, bool]
     daily_limit: int = Field(6, ge=1, le=20)
+
+    @field_validator("categories")
+    @classmethod
+    def known_categories(cls, v: dict[str, bool]) -> dict[str, bool]:
+        unknown = sorted(set(v) - set(NOTIFICATION_CATEGORIES))
+        if unknown:
+            raise ValueError(f"Unknown notification categories: {', '.join(unknown)}")
+        return v
 
 
 class Privacy(BaseModel):
@@ -91,7 +101,7 @@ async def export_me(user: CurrentUser = Depends(get_current_user)):
     store = get_store()
     return {"profile": await store.get("users", user.uid),
             "notifications": await store.query("notifications", [("uid", "==", user.uid)]),
-            "exported_at": datetime.now(timezone.utc).isoformat()}
+            "exported_at": datetime.now(UTC).isoformat()}
 
 
 @router.delete("/me/data")
@@ -101,6 +111,8 @@ async def delete_my_data(user: CurrentUser = Depends(get_current_user)):
     for doc in await store.query("notifications", [("uid", "==", user.uid)]):
         await store.delete("notifications", doc["id"])
         n += 1
+    for code in await store.query("tg_link_codes", [("uid", "==", user.uid)]):
+        await store.delete("tg_link_codes", code["id"])
     await store.delete("users", user.uid)
     return {"deleted_notifications": n, "profile_deleted": True}
 
@@ -147,7 +159,7 @@ async def test_notification(user: CurrentUser = Depends(get_current_user)):
     profile = await get_store().get("users", user.uid)
     if not profile:
         raise HTTPException(404, "Profile not found")
-    minute = datetime.now(timezone.utc).strftime("%Y%m%d%H%M")
+    minute = datetime.now(UTC).strftime("%Y%m%d%H%M")
     signal = {"key": f"test:{minute}", "category": "recommendation", "severity": "critical",
               "title": "Test notification", "message": "Delivery check from AIRenv settings. No action needed."}
     prefs = {**(profile.get("notification_prefs") or {}), "min_severity": "info",
@@ -184,16 +196,28 @@ async def telegram_unlink(user: CurrentUser = Depends(get_current_user)):
 async def telegram_webhook(request: Request,
                            x_telegram_bot_api_secret_token: str | None = Header(default=None)):
     s = get_settings()
-    if not s.telegram_webhook_secret or x_telegram_bot_api_secret_token != s.telegram_webhook_secret:
+    expected = s.telegram_webhook_secret or ""
+    supplied = x_telegram_bot_api_secret_token or ""
+    if not expected or not secrets.compare_digest(supplied.encode(), expected.encode()):
         raise HTTPException(401, "Invalid webhook secret")
-    update = await request.json()
-    asyncio.create_task(tg.handle_update(update))
+    try:
+        update = await request.json()
+    except ValueError as exc:
+        raise HTTPException(400, "Invalid JSON") from exc
+    if not isinstance(update, dict):
+        raise HTTPException(400, "Invalid update")
+    task = asyncio.create_task(tg.handle_update(update))
+    _background.add(task)  # keep a reference so the task is not garbage-collected mid-run
+    task.add_done_callback(_background.discard)
     return {"ok": True}
 
 
 # ----------------------------------------------------------------------------- live stream
 
+TICKET_TTL_SECONDS = 60
+MAX_OPEN_TICKETS = 5000
 _tickets: dict[str, tuple[float, str]] = {}
+_background: set[asyncio.Task] = set()
 
 
 @router.post("/stream/ticket")
@@ -202,13 +226,17 @@ async def stream_ticket(user: CurrentUser = Depends(get_current_user)):
     now = time.time()
     for k in [k for k, (exp, _) in _tickets.items() if exp < now]:
         _tickets.pop(k, None)
+    if len(_tickets) >= MAX_OPEN_TICKETS:
+        raise HTTPException(503, "Too many pending stream tickets. Try again shortly.")
     ticket = new_token(18)
-    _tickets[ticket] = (now + 60, user.uid)
-    return {"ticket": ticket, "expires_in": 60}
+    _tickets[ticket] = (now + TICKET_TTL_SECONDS, user.uid)
+    return {"ticket": ticket, "expires_in": TICKET_TTL_SECONDS}
 
 
 @router.get("/stream")
-async def stream(request: Request, location_id: str = Query(max_length=40), ticket: str | None = None):
+async def stream(request: Request,
+                 location_id: str = Query(pattern=LOCATION_ID_PATTERN, max_length=24),
+                 ticket: str | None = Query(None, max_length=64)):
     topics = [f"location:{location_id}"]
     if ticket:
         entry = _tickets.pop(ticket, None)
@@ -225,7 +253,7 @@ async def stream(request: Request, location_id: str = Query(max_length=40), tick
                 try:
                     msg = await asyncio.wait_for(queue.get(), timeout=20)
                     yield msg
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield ": keep-alive\n\n"
         finally:
             bus.unsubscribe(queue)

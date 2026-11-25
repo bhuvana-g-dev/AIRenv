@@ -10,7 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -93,7 +93,7 @@ def build_recommendations(snapshot: dict[str, Any], series: dict[str, Any],
             "benefit_type": "exposure",
             "confidence": _hour_conf(conf, hours_ahead),
             "audience": "everyone",
-            "data_refs": base_refs + [_ref("Best window mean PM2.5 (forecast)", best["mean_pm2_5"], "µg/m³",
+            "data_refs": [*base_refs, _ref("Best window mean PM2.5 (forecast)", best["mean_pm2_5"], "µg/m³",
                                            snapshot)],
         })
     elif sev <= 1 and aqi is not None:
@@ -323,7 +323,7 @@ async def briefing(snapshot: dict[str, Any], series: dict[str, Any], profile: di
     recs = build_recommendations(snapshot, series, profile, events)
     language = (profile or {}).get("language", "en")
     base = fallback_briefing(snapshot, recs)
-    base.update({"generated_at": datetime.now(timezone.utc).isoformat(), "language": "en",
+    base.update({"generated_at": datetime.now(UTC).isoformat(), "language": "en",
                  "observed_at": snapshot.get("observed_at"), "is_demo": snapshot.get("is_demo", False),
                  "ai_available": ai_engine.available()})
     if not use_ai or not ai_engine.available() or snapshot.get("is_demo"):
@@ -344,7 +344,8 @@ async def briefing(snapshot: dict[str, Any], series: dict[str, Any], profile: di
         "draft_recommendations": [{k: r[k] for k in ("id", "title", "what_is_happening", "why_it_matters",
                                                      "action", "alternative", "expected_benefit")} for r in recs],
     }
-    key = hashlib.sha1(json.dumps([context, language], sort_keys=True, default=str).encode()).hexdigest()
+    key = hashlib.sha1(json.dumps([context, language], sort_keys=True, default=str).encode(),
+                       usedforsecurity=False).hexdigest()
     hit = _briefing_cache.get(key)
     if hit and time.time() - hit[0] < 1800:
         return hit[1]

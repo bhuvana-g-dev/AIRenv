@@ -3,13 +3,14 @@ import { motion } from "motion/react";
 import { Bell, CheckCircle2, Database, Download, ExternalLink, Lock, MapPin, MessageCircle, Server, Trash2, User, XCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { LocationSearch } from "../components/LocationPicker";
-import { COMMUNITY_TYPES, FAMILY_FIELDS } from "../components/Onboarding";
-import { Badge, Button, Card, CardHeader, ErrorState, Field, Modal, PageHeader, Skeleton, Toggle, cn } from "../components/ui";
+import { COMMUNITY_TYPES, FAMILY_FIELDS } from "../lib/profileOptions";
+import { Badge, Button, Card, CardHeader, ErrorState, Field, Modal, PageHeader, Skeleton, Toggle } from "../components/ui";
 import { api, del, post } from "../lib/api";
 import { timeAgo } from "../lib/format";
 import { useProfile, useSystemStatus, useUpdateProfile } from "../lib/queries";
 import { useApp, useToasts } from "../lib/store";
 import type { Profile } from "../lib/types";
+import { cn } from "../lib/cn";
 
 const LANGUAGES = [
   ["en", "English"],
@@ -47,9 +48,9 @@ function TelegramSection({ profile }: { profile: Profile }) {
   const s = status.data;
   return (
     <Card hover={false}>
-      <CardHeader icon={<MessageCircle className="h-4 w-4 text-cyan" />} title="Telegram connection" subtitle="Receive alerts without opening AIRenv, and enable Conversation Intelligence in groups" />
+      <CardHeader icon={<MessageCircle aria-hidden="true" className="h-4 w-4 text-cyan" />} title="Telegram connection" subtitle="Receive alerts without opening AIRenv, and enable Conversation Intelligence in groups" />
       {status.isLoading ? (
-        <Skeleton className="h-20" />
+        <Skeleton className="h-20" label="Checking Telegram status…" />
       ) : !s?.configured ? (
         <div className="rounded-xl border border-yellow-400/20 bg-yellow-400/5 p-3.5 text-xs leading-relaxed text-muted">
           <p className="font-medium text-yellow-100">Telegram is not configured on this server.</p>
@@ -83,7 +84,8 @@ function TelegramSection({ profile }: { profile: Profile }) {
                 <div className="mt-2 space-y-2">
                   {code.data.deep_link ? (
                     <a href={code.data.deep_link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-lg bg-cyan/15 px-3 py-1.5 text-cyan hover:bg-cyan/25">
-                      Open Telegram to link <ExternalLink className="h-3 w-3" />
+                      Open Telegram to link <span className="sr-only">(opens in a new tab)</span>
+                      <ExternalLink aria-hidden="true" className="h-3 w-3" />
                     </a>
                   ) : (
                     <p>
@@ -134,7 +136,7 @@ export default function SettingsPage() {
     },
   });
 
-  if (profile.isLoading || !draft) return <Skeleton className="h-96" />;
+  if (profile.isLoading || !draft) return <Skeleton className="h-96" label="Loading settings…" />;
   if (profile.isError) return <ErrorState message={(profile.error as Error).message} />;
 
   const save = (fields: (keyof Profile)[]) => {
@@ -170,10 +172,11 @@ export default function SettingsPage() {
                 <a
                   href={`#${s.id}`}
                   onClick={() => setActive(s.id)}
+                  aria-current={active === s.id ? "true" : undefined}
                   className={cn("relative flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm", active === s.id ? "text-ink" : "text-muted hover:text-ink")}
                 >
-                  {active === s.id && <motion.span layoutId="settings-nav" className="absolute inset-0 rounded-xl bg-emerald/10" />}
-                  <s.icon className="relative h-4 w-4" />
+                  {active === s.id && <motion.span aria-hidden="true" layoutId="settings-nav" className="absolute inset-0 rounded-xl bg-emerald/10" />}
+                  <s.icon aria-hidden="true" className="relative h-4 w-4" />
                   <span className="relative">{s.label}</span>
                 </a>
               </li>
@@ -183,7 +186,7 @@ export default function SettingsPage() {
         <div className="space-y-5">
           <section id="profile" className="scroll-mt-24 space-y-4">
             <Card hover={false}>
-              <CardHeader icon={<MapPin className="h-4 w-4" />} title="Location & community" />
+              <CardHeader icon={<MapPin aria-hidden="true" className="h-4 w-4" />} title="Location & community" />
               <div className="grid gap-4 md:grid-cols-2">
                 <Field label="Display name">
                   <input className="input" value={draft.display_name ?? ""} onChange={(e) => setDraft({ ...draft, display_name: e.target.value })} maxLength={60} />
@@ -197,14 +200,14 @@ export default function SettingsPage() {
                     ))}
                   </select>
                 </Field>
-                <Field label={`Monitored location · ${draft.location.name} (${draft.location.lat.toFixed(3)}, ${draft.location.lon.toFixed(3)})`}>
+                <Field group label={`Monitored location · ${draft.location.name} (${draft.location.lat.toFixed(3)}, ${draft.location.lon.toFixed(3)})`}>
                   <LocationSearch onSelect={(l) => setDraft({ ...draft, location: l })} />
                 </Field>
-                <Field label="Household / community type">
+                <Field group label="Household / community type">
                   <div className="grid gap-1.5">
                     {COMMUNITY_TYPES.map((t) => (
-                      <button key={t.value} onClick={() => setDraft({ ...draft, community_type: t.value })} className={cn("flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs", draft.community_type === t.value ? "border-mint/40 bg-emerald/10" : "hairline hover:bg-white/5")}>
-                        <t.icon className="h-3.5 w-3.5 text-mint" /> {t.label}
+                      <button type="button" key={t.value} aria-pressed={draft.community_type === t.value} onClick={() => setDraft({ ...draft, community_type: t.value })} className={cn("flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs", draft.community_type === t.value ? "border-mint/40 bg-emerald/10" : "hairline hover:bg-white/5")}>
+                        <t.icon aria-hidden="true" className="h-3.5 w-3.5 text-mint" /> {t.label}
                       </button>
                     ))}
                   </div>
@@ -226,7 +229,7 @@ export default function SettingsPage() {
 
           <section id="notifications" className="scroll-mt-24">
             <Card hover={false}>
-              <CardHeader icon={<Bell className="h-4 w-4" />} title="Notification preferences" />
+              <CardHeader icon={<Bell aria-hidden="true" className="h-4 w-4" />} title="Notification preferences" />
               <div className="grid gap-x-8 md:grid-cols-2">
                 <div>
                   <Toggle label="In-app alerts" checked={np.in_app} onChange={(v) => setNp({ in_app: v })} />
@@ -272,7 +275,7 @@ export default function SettingsPage() {
 
           <section id="privacy" className="scroll-mt-24">
             <Card hover={false}>
-              <CardHeader icon={<Lock className="h-4 w-4" />} title="Privacy permissions" subtitle="You control what AIRenv processes and keeps" />
+              <CardHeader icon={<Lock aria-hidden="true" className="h-4 w-4" />} title="Privacy permissions" subtitle="You control what AIRenv processes and keeps" />
               <Toggle label="Allow Conversation Intelligence for my communities" description="Lets AIRenv extract planned activities from groups that also opted in. Raw messages are never stored." checked={draft.privacy.conversation_intelligence} onChange={(v) => setDraft({ ...draft, privacy: { ...draft.privacy, conversation_intelligence: v } })} />
               <Toggle label="Keep extracted event fields" description="Activity type, date and time only, deleted automatically after the retention period." checked={draft.privacy.store_extracted_events} onChange={(v) => setDraft({ ...draft, privacy: { ...draft.privacy, store_extracted_events: v } })} />
               <Toggle label="Include me in aggregate participation counts" checked={draft.privacy.share_aggregate_participation} onChange={(v) => setDraft({ ...draft, privacy: { ...draft.privacy, share_aggregate_participation: v } })} />
@@ -285,10 +288,10 @@ export default function SettingsPage() {
                 <Button loading={update.isPending} onClick={() => save(["privacy"])}>
                   Save privacy
                 </Button>
-                <Button variant="outline" icon={<Download className="h-4 w-4" />} onClick={() => void exportData()}>
+                <Button variant="outline" icon={<Download aria-hidden="true" className="h-4 w-4" />} onClick={() => void exportData()}>
                   Export my data
                 </Button>
-                <Button variant="danger" icon={<Trash2 className="h-4 w-4" />} onClick={() => setConfirmDelete(true)}>
+                <Button variant="danger" icon={<Trash2 aria-hidden="true" className="h-4 w-4" />} onClick={() => setConfirmDelete(true)}>
                   Delete my data
                 </Button>
               </div>
@@ -297,7 +300,7 @@ export default function SettingsPage() {
 
           <section id="sources" className="scroll-mt-24">
             <Card hover={false}>
-              <CardHeader icon={<Database className="h-4 w-4" />} title="Data sources" subtitle="Turn station providers on or off for the air map" />
+              <CardHeader icon={<Database aria-hidden="true" className="h-4 w-4" />} title="Data sources" subtitle="Turn station providers on or off for the air map" />
               <div className="grid gap-x-8 md:grid-cols-2">
                 {[
                   ["open_meteo", "Open-Meteo / CAMS model", "Always used for the location time series and forecast"],
@@ -331,14 +334,15 @@ export default function SettingsPage() {
 
           <section id="system" className="scroll-mt-24">
             <Card hover={false}>
-              <CardHeader icon={<Server className="h-4 w-4" />} title="System status" subtitle="Backend integrations and background processing" />
+              <CardHeader icon={<Server aria-hidden="true" className="h-4 w-4" />} title="System status" subtitle="Backend integrations and background processing" />
               {system.data ? (
                 <div className="grid gap-4 md:grid-cols-2">
                   <ul className="space-y-1.5 text-xs">
                     {Object.entries(system.data.integrations).map(([k, v]) => (
                       <li key={k} className="flex items-center justify-between rounded-lg bg-black/15 px-3 py-2">
                         <span className="flex items-center gap-2 capitalize">
-                          {v.configured ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald" /> : <XCircle className="h-3.5 w-3.5 text-faint" />}
+                          {v.configured ? <CheckCircle2 aria-hidden="true" className="h-3.5 w-3.5 text-emerald" /> : <XCircle aria-hidden="true" className="h-3.5 w-3.5 text-faint" />}
+                          <span className="sr-only">{v.configured ? "Configured:" : "Not configured:"}</span>
                           {k.replace("_", " ")}
                         </span>
                         <span className="font-mono text-[10px] text-faint">{v.configured ? "ready" : v.env}</span>
@@ -356,7 +360,7 @@ export default function SettingsPage() {
                   </ul>
                 </div>
               ) : (
-                <Skeleton className="h-32" />
+                <Skeleton className="h-32" label="Loading system status…" />
               )}
             </Card>
           </section>

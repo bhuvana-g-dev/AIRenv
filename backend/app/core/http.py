@@ -23,11 +23,30 @@ class UpstreamError(RuntimeError):
         self.message = message
 
 
+def describe_error(exc: BaseException) -> str:
+    """A client-safe description of an HTTP failure.
+
+    httpx error messages embed the full request URL, which can contain credentials
+    (CPCB takes its key as a query parameter; Telegram puts the bot token in the path).
+    Never return or log ``str(exc)`` for upstream requests; use this instead.
+    """
+    if isinstance(exc, httpx.HTTPStatusError):
+        return f"HTTP {exc.response.status_code}"
+    if isinstance(exc, httpx.TimeoutException):
+        return "request timed out"
+    if isinstance(exc, httpx.HTTPError):
+        return f"network error ({type(exc).__name__})"
+    if isinstance(exc, ValueError):
+        return "invalid response from provider"
+    return type(exc).__name__
+
+
 def client() -> httpx.AsyncClient:
     global _client
     if _client is None or _client.is_closed:
         _client = httpx.AsyncClient(
             timeout=httpx.Timeout(get_settings().http_timeout_seconds),
+            limits=httpx.Limits(max_connections=50, max_keepalive_connections=20, keepalive_expiry=30),
             headers={"User-Agent": "AIRenv/1.0 (environmental intelligence; contact via project repo)"},
             follow_redirects=True,
         )
@@ -60,9 +79,7 @@ async def get_json(provider: str, url: str, *, params: dict[str, Any] | None = N
             log.warning("%s timeout (attempt %s)", provider, attempt + 1)
         except (httpx.HTTPError, ValueError) as exc:
             last = exc
-            log.warning("%s request failed: %s", provider, exc)
+            log.warning("%s request failed: %s", provider, describe_error(exc))
         if attempt < retries:
             await asyncio.sleep(0.6 * (attempt + 1))
-    if isinstance(last, httpx.TimeoutException):
-        raise UpstreamError(provider, "request timed out")
-    raise UpstreamError(provider, str(last) if last else "unknown error")
+    raise UpstreamError(provider, describe_error(last) if last else "unknown error")

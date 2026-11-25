@@ -31,6 +31,17 @@ export function colorForAqi(aqi: number | null | undefined): string {
   return c ? CATEGORY_COLORS[c.key] : "#5F7469";
 }
 
+/**
+ * Colours safe for small text on the dark theme (≥4.5:1 on --color-bg). Identical to
+ * CATEGORY_COLORS except "severe", whose fill colour is too dark for text.
+ */
+export const CATEGORY_TEXT_COLORS: Record<Category["key"], string> = { ...CATEGORY_COLORS, severe: "#F2668B" };
+
+export function textColorForAqi(aqi: number | null | undefined): string {
+  const c = categoryForAqi(aqi);
+  return c ? CATEGORY_TEXT_COLORS[c.key] : "#869B90";
+}
+
 export function categoryForPm25(v: number | null | undefined) {
   if (v == null) return null;
   const idx = PM25_BANDS.findIndex((b) => v <= b);

@@ -121,8 +121,10 @@ def trip_emissions(req: TripRequest) -> dict[str, Any]:
     avoided_week = base - alt
 
     def band(v: float) -> dict[str, float]:
-        return {"estimate": round(v, 2), "low": round(v * (1 - UNCERTAINTY), 2),
-                "high": round(v * (1 + UNCERTAINTY), 2)}
+        # Order the bounds explicitly: when the alternative is dirtier, v is negative and
+        # multiplying by (1 - u) gives the *upper* bound.
+        a, b = v * (1 - UNCERTAINTY), v * (1 + UNCERTAINTY)
+        return {"estimate": round(v, 2), "low": round(min(a, b), 2), "high": round(max(a, b), 2)}
 
     return {
         "km_per_week": round(km_week, 1),
@@ -175,6 +177,7 @@ def community_emissions(records: list[dict[str, Any]]) -> dict[str, Any]:
         if km and base in TRANSPORT_FACTORS and alt in TRANSPORT_FACTORS:
             total += (_per_passenger(base, 1) - _per_passenger(alt, r.get("occupants") or 1)) * km
             used += 1
-    return {"estimate_kg": round(total, 1), "low_kg": round(total * (1 - UNCERTAINTY), 1),
-            "high_kg": round(total * (1 + UNCERTAINTY), 1), "records_used": used,
+    a, b = total * (1 - UNCERTAINTY), total * (1 + UNCERTAINTY)
+    return {"estimate_kg": round(total, 1), "low_kg": round(min(a, b), 1),
+            "high_kg": round(max(a, b), 1), "records_used": used,
             "note": "Estimated from verified records with reported distances; not a measurement."}

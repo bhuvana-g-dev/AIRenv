@@ -7,7 +7,7 @@ Two sources of history are combined and always labelled separately:
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from statistics import mean
 from typing import Any
 
@@ -27,7 +27,7 @@ async def record_snapshot(snapshot: dict[str, Any]) -> bool:
     await store.set("history", doc_id, {
         "location_id": loc_id,
         "hour": snapshot["observed_local"][:13] + ":00",
-        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "recorded_at": datetime.now(UTC).isoformat(),
         "aqi_in": snapshot["aqi"].get("value"),
         "us_aqi": snapshot.get("us_aqi"),
         "pm2_5": p["pm2_5"]["value"],
@@ -62,7 +62,7 @@ def comparisons(series: dict[str, Any]) -> dict[str, Any]:
     daily: dict[str, list[float]] = defaultdict(list)
     daily_aqi: dict[str, list[int]] = defaultdict(list)
     by_hour: dict[int, list[float]] = defaultdict(list)
-    for i in range(0, now_i + 1):
+    for i in range(now_i + 1):
         if pm[i] is None:
             continue
         day = times[i][:10]
@@ -96,7 +96,7 @@ def comparisons(series: dict[str, Any]) -> dict[str, Any]:
 
 
 async def prune(retention_days: int) -> int:
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=retention_days)).isoformat()
+    cutoff = (datetime.now(UTC) - timedelta(days=retention_days)).isoformat()
     store = get_store()
     old = await store.query("history", [("recorded_at", "<", cutoff)])
     for row in old:

@@ -1,6 +1,9 @@
+"""Exposure, emissions and community-participation impact endpoints."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+import asyncio
+
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import Field
 
 from app.api.deps import bundle_or_503, location_param
@@ -26,7 +29,7 @@ async def exposure(body: ExposureBody):
     result = ic.exposure_comparison(s["times"], s["hourly"]["pm2_5"], s["now_index"], body)
     ni = s["now_index"]
     result["forecast"] = [{"time": t, "pm2_5": v} for t, v in
-                          zip(s["times"][ni: ni + 48], s["hourly"]["pm2_5"][ni: ni + 48])]
+                          zip(s["times"][ni: ni + 48], s["hourly"]["pm2_5"][ni: ni + 48], strict=False)]
     result["is_demo"] = b["snapshot"]["is_demo"]
     return result
 
@@ -45,7 +48,8 @@ async def energy(body: ic.EnergyRequest):
 
 
 @router.get("/factors")
-async def factors():
+async def factors(response: Response):
+    response.headers["Cache-Control"] = "public, max-age=86400"  # static reference data
     return {"transport": ic.TRANSPORT_FACTORS, "transport_source": ic.TRANSPORT_SOURCE,
             "grid_factor": ic.GRID_FACTOR_IN, "inhalation_rates": ic.INHALATION_RATES,
             "inhalation_source": ic.INHALATION_SOURCE}
@@ -54,15 +58,14 @@ async def factors():
 @router.get("/community")
 async def community_impact(user: CurrentUser = Depends(get_current_user)):
     comms = await cs.list_for_user(user)
-    per = []
-    for c in comms:
-        per.append({"id": c["id"], "name": c["name"], "type": c["type"], "is_demo": c.get("is_demo", False),
-                    "stats": await cs.stats(c["id"])})
     store = get_store()
-    burning = []
-    for c in comms:
-        burning += [e for e in await store.query("community_events", [("community_id", "==", c["id"])])
-                    if e.get("concern_type") == "open_burning"]
-    return {"communities": per, "open_burning_concerns_detected": len(burning),
+    stats, events = await asyncio.gather(
+        asyncio.gather(*(cs.stats(c["id"]) for c in comms)),
+        asyncio.gather(*(store.query("community_events", [("community_id", "==", c["id"])]) for c in comms)),
+    )
+    per = [{"id": c["id"], "name": c["name"], "type": c["type"], "is_demo": c.get("is_demo", False), "stats": st}
+           for c, st in zip(comms, stats, strict=True)]
+    burning = sum(1 for evs in events for e in evs if e.get("concern_type") == "open_burning")
+    return {"communities": per, "open_burning_concerns_detected": burning,
             "disclaimer": "Participation and avoided-incident counts describe actions taken. They are not evidence "
                           "of improved local air quality."}

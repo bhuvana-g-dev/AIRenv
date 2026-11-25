@@ -1,9 +1,10 @@
 """Communities, linked groups, detected events, verified initiatives and participation statistics."""
 from __future__ import annotations
 
+import asyncio
 import uuid
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import HTTPException
@@ -25,7 +26,7 @@ INITIATIVE_TYPES = {
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class CommunityIn(BaseModel):
@@ -81,10 +82,15 @@ async def require_manage(user: CurrentUser, cid: str) -> dict[str, Any]:
 
 
 async def list_for_user(user: CurrentUser) -> list[dict[str, Any]]:
-    rows = await get_store().query("communities")
+    store = get_store()
     if user.role == "admin":
-        return rows
-    return [c for c in rows if user.uid in c.get("admin_uids", []) or user.uid in c.get("member_uids", [])]
+        return await store.query("communities")
+    members, admins = await asyncio.gather(
+        store.query("communities", [("member_uids", "array_contains", user.uid)]),
+        store.query("communities", [("admin_uids", "array_contains", user.uid)]),
+    )
+    merged = {c["id"]: c for c in [*members, *admins]}
+    return sorted(merged.values(), key=lambda c: c.get("created_at") or "")
 
 
 async def create(user: CurrentUser, data: CommunityIn, is_demo: bool = False) -> dict[str, Any]:
@@ -106,7 +112,7 @@ async def add_event(cid: str, data: dict[str, Any]) -> dict[str, Any]:
     eid = data.get("id") or uuid.uuid4().hex[:12]
     retention = int(data.pop("retention_days", 30))
     doc = {**data, "community_id": cid, "created_at": _now(),
-           "expires_at": (datetime.now(timezone.utc) + timedelta(days=retention)).isoformat()}
+           "expires_at": (datetime.now(UTC) + timedelta(days=retention)).isoformat()}
     await get_store().set("community_events", eid, doc)
     return {**doc, "id": eid}
 
@@ -118,16 +124,11 @@ async def events_for(cid: str) -> list[dict[str, Any]]:
 
 
 async def upcoming_events_for_location(location_id: str) -> list[dict[str, Any]]:
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    comms = await get_store().query("communities")
-    out = []
-    for c in comms:
-        if (c.get("location") or {}).get("id") != location_id:
-            continue
-        for e in await events_for(c["id"]):
-            if e.get("kind", "activity") == "activity" and (e.get("date") or "") >= today:
-                out.append(e)
-    return out
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+    comms = await get_store().query("communities", [("location.id", "==", location_id)])
+    per_community = await asyncio.gather(*(events_for(c["id"]) for c in comms))
+    return [e for events in per_community for e in events
+            if e.get("kind", "activity") == "activity" and (e.get("date") or "") >= today]
 
 
 async def groups_for(cid: str) -> list[dict[str, Any]]:
@@ -176,18 +177,26 @@ async def stats(cid: str) -> dict[str, Any]:
     }
 
 
-async def remove_demo_data() -> int:
+async def remove_demo_data(user: CurrentUser) -> int:
+    """Delete demo communities the user manages (platform admins: all demo data) and their children."""
     store = get_store()
+    demo = await store.query("communities", [("is_demo", "==", True)])
+    targets = [c for c in demo if can_manage(user, c)]
+    target_ids = {c["id"] for c in targets}
     n = 0
-    for coll in ("communities", "community_events", "initiatives", "initiative_records", "tg_groups"):
+    for coll in ("community_events", "initiatives", "initiative_records", "tg_groups"):
         for doc in await store.query(coll, [("is_demo", "==", True)]):
-            await store.delete(coll, doc["id"])
-            n += 1
-    for u in await store.query("users"):
-        ids = u.get("community_ids", [])
-        remaining = [i for i in ids if await store.get("communities", i)]
-        if remaining != ids:
-            await store.update("users", u["id"], {"community_ids": remaining})
+            if doc.get("community_id") in target_ids:
+                await store.delete(coll, doc["id"])
+                n += 1
+    for c in targets:
+        await store.delete("communities", c["id"])
+        n += 1
+        for uid in set(c.get("member_uids", [])) | set(c.get("admin_uids", [])):
+            profile = await store.get("users", uid)
+            if profile and c["id"] in profile.get("community_ids", []):
+                remaining = [i for i in profile["community_ids"] if i != c["id"]]
+                await store.update("users", uid, {"community_ids": remaining})
     return n
 
 
@@ -200,7 +209,7 @@ async def seed_demo(user: CurrentUser, location: dict[str, Any]) -> list[str]:
     school = await create(user, CommunityIn(name="Sunrise Public School (demo)", type="school", location=location),
                           is_demo=True)
     created += [apt["id"], school["id"]]
-    tomorrow = (datetime.now(timezone.utc) + timedelta(hours=5.5) + timedelta(days=1)).strftime("%Y-%m-%d")
+    tomorrow = (datetime.now(UTC) + timedelta(hours=5.5) + timedelta(days=1)).strftime("%Y-%m-%d")
     await store.set("tg_groups", f"demo-{school['id']}", {
         "chat_id": f"demo-{school['id']}", "title": "Sunrise Parents (demo group)", "community_id": school["id"],
         "authorized": True, "reply_mode": "approval", "opted_in_at": _now(), "location": location, "is_demo": True,
@@ -220,7 +229,7 @@ async def seed_demo(user: CurrentUser, location: dict[str, Any]) -> list[str]:
     await add_event(apt["id"], {"source": "manual", "kind": "concern", "concern_type": "open_burning",
                                 "title": "Leaf burning near block C reported (demo)", "date": tomorrow,
                                 "is_demo": True, "advisory": {"status": "none"}, "status": "open"})
-    base = datetime.now(timezone.utc)
+    base = datetime.now(UTC)
     specs = [
         (apt["id"], "carpool", "Office carpool pool", [(60, 14, True, 280), (30, 19, True, 380), (5, 23, False, 460)]),
         (apt["id"], "waste_segregation", "Door-to-door segregation", [(45, 120, True, 0), (15, 152, True, 0)]),

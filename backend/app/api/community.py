@@ -1,11 +1,13 @@
+"""Communities, Telegram groups, detected events, advisories and verified initiatives."""
 from __future__ import annotations
 
+import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from app.api.deps import bundle_or_503, location_param
 from app.core.security import CurrentUser, get_current_user
@@ -31,22 +33,25 @@ async def _assess(event: dict[str, Any], community: dict[str, Any]) -> dict[str,
 
 @router.get("/communities")
 async def list_communities(user: CurrentUser = Depends(get_current_user)):
-    out = []
-    for c in await cs.list_for_user(user):
-        events = await cs.events_for(c["id"])
-        out.append({**c, "can_manage": cs.can_manage(user, c), "event_count": len(events),
-                    "pending_advisories": sum(1 for e in events if (e.get("advisory") or {}).get("status") == "pending"),
-                    "group_count": len(await cs.groups_for(c["id"]))})
+    comms = await cs.list_for_user(user)
+    events, groups = await asyncio.gather(
+        asyncio.gather(*(cs.events_for(c["id"]) for c in comms)),
+        asyncio.gather(*(cs.groups_for(c["id"]) for c in comms)),
+    )
+    out = [{**c, "can_manage": cs.can_manage(user, c), "event_count": len(evs),
+            "pending_advisories": sum(1 for e in evs if (e.get("advisory") or {}).get("status") == "pending"),
+            "group_count": len(grps)}
+           for c, evs, grps in zip(comms, events, groups, strict=True)]
     return {"communities": out}
 
 
 @router.post("/communities")
 async def create_community(data: cs.CommunityIn, user: CurrentUser = Depends(get_current_user)):
     try:
-        Location(**data.location)
-    except Exception as exc:
+        loc = Location(**data.location)
+    except (TypeError, ValidationError) as exc:
         raise HTTPException(422, "Invalid location") from exc
-    return await cs.create(user, data)
+    return await cs.create(user, data.model_copy(update={"location": loc.model_dump()}))
 
 
 @router.post("/communities/demo/seed")
@@ -67,7 +72,7 @@ async def seed_demo(loc: Location = Depends(location_param), user: CurrentUser =
 
 @router.delete("/communities/demo")
 async def remove_demo(user: CurrentUser = Depends(get_current_user)):
-    return {"removed": await cs.remove_demo_data()}
+    return {"removed": await cs.remove_demo_data(user)}
 
 
 @router.get("/communities/{cid}")
@@ -106,7 +111,11 @@ async def add_event(cid: str, data: cs.EventIn, user: CurrentUser = Depends(get_
 @router.delete("/communities/{cid}/events/{eid}")
 async def delete_event(cid: str, eid: str, user: CurrentUser = Depends(get_current_user)):
     await cs.require_manage(user, cid)
-    await get_store().delete("community_events", eid)
+    store = get_store()
+    ev = await store.get("community_events", eid)
+    if not ev or ev.get("community_id") != cid:
+        raise HTTPException(404, "Event not found")
+    await store.delete("community_events", eid)
     return {"ok": True}
 
 
@@ -141,7 +150,7 @@ async def decide_advisory(cid: str, eid: str, body: AdvisoryDecision, user: Curr
                 errors.append(f"{g.get('title')}: {exc}")
     status = "sent" if delivered_to else ("approved" if body.action == "approve" else "dismissed")
     patch = {"advisory": {**adv, "text": text, "status": status, "decided_by": user.uid,
-                          "decided_at": datetime.now(timezone.utc).isoformat(), "delivered_to": delivered_to,
+                          "decided_at": datetime.now(UTC).isoformat(), "delivered_to": delivered_to,
                           "delivery_errors": errors}}
     return await store.update("community_events", eid, patch)
 
@@ -195,7 +204,7 @@ async def add_initiative(cid: str, data: cs.InitiativeIn, user: CurrentUser = De
     if data.type not in cs.INITIATIVE_TYPES:
         raise HTTPException(422, "Unknown initiative type")
     iid = uuid.uuid4().hex[:12]
-    doc = {**data.model_dump(), "community_id": cid, "created_at": datetime.now(timezone.utc).isoformat(),
+    doc = {**data.model_dump(), "community_id": cid, "created_at": datetime.now(UTC).isoformat(),
            "is_demo": False}
     await get_store().set("initiatives", iid, doc)
     return {**doc, "id": iid}
@@ -211,7 +220,7 @@ async def add_record(cid: str, iid: str, data: cs.RecordIn, user: CurrentUser = 
     rid = uuid.uuid4().hex[:12]
     doc = {**data.model_dump(), "initiative_id": iid, "community_id": cid, "is_demo": False,
            "verified_by": user.uid if data.verified else None,
-           "verified_at": datetime.now(timezone.utc).isoformat() if data.verified else None,
+           "verified_at": datetime.now(UTC).isoformat() if data.verified else None,
            "created_by": user.uid}
     await store.set("initiative_records", rid, doc)
     return {**doc, "id": rid}
@@ -225,7 +234,7 @@ async def verify_record(cid: str, rid: str, user: CurrentUser = Depends(get_curr
     if not rec or rec["community_id"] != cid:
         raise HTTPException(404, "Record not found")
     return await store.update("initiative_records", rid, {"verified": True, "verified_by": user.uid,
-                                                          "verified_at": datetime.now(timezone.utc).isoformat()})
+                                                          "verified_at": datetime.now(UTC).isoformat()})
 
 
 class AnalyzeRequest(BaseModel):

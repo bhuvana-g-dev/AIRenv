@@ -15,17 +15,14 @@ import {
 } from "recharts";
 import { useReducedMotion } from "motion/react";
 import { CATEGORY_COLORS, NAQI_BANDS, colorForAqi, colorForPm25 } from "../lib/aqi";
+import { dailySummary, hourProfileSummary, trendSummary } from "../lib/chartSummary";
 import { localDayHour } from "../lib/format";
+import { METRIC_LABEL, type Metric } from "../lib/metrics";
 import type { Series } from "../lib/types";
 
-export type Metric = "aqi_in" | "pm2_5" | "pm10" | "no2" | "o3";
-export const METRIC_LABEL: Record<Metric, { label: string; unit: string }> = {
-  aqi_in: { label: "NAQI (estimated)", unit: "" },
-  pm2_5: { label: "PM2.5", unit: "µg/m³" },
-  pm10: { label: "PM10", unit: "µg/m³" },
-  no2: { label: "NO₂", unit: "µg/m³" },
-  o3: { label: "O₃", unit: "µg/m³" },
-};
+/** Axis tick colour: the `--color-faint` token, ≥4.5:1 on the dark card surfaces. */
+export const AXIS_TICK = "#869B90";
+
 
 interface Point {
   t: string;
@@ -71,9 +68,13 @@ export function TrendChart({ series, metric, pastHours = 48, futureHours = 72, h
   const yMax = metric === "aqi_in" ? Math.min(500, Math.ceil((max + 30) / 50) * 50) : Math.ceil((max * 1.15) / 10) * 10;
   const stroke = metric === "aqi_in" ? colorForAqi(data.find((d) => d.t === nowT)?.value ?? null) : "#55D6E8";
   const gid = `g-${metric}`;
+  const summary = useMemo(
+    () => trendSummary({ label: METRIC_LABEL[metric].label, unit: METRIC_LABEL[metric].unit, points: data, nowValue: data.find((d) => d.t === nowT)?.value, isAqi: metric === "aqi_in" }),
+    [data, metric, nowT],
+  );
 
   return (
-    <div style={{ height }} className="w-full">
+    <div style={{ height }} className="w-full" role="img" aria-label={summary}>
       <ResponsiveContainer>
         <AreaChart data={data} margin={{ top: 10, right: 8, left: -14, bottom: 0 }}>
           <defs>
@@ -95,11 +96,11 @@ export function TrendChart({ series, metric, pastHours = 48, futureHours = 72, h
             dataKey="t"
             tickFormatter={(t: string) => (t.slice(11, 13) === "00" ? localDayHour(t).slice(0, 3) : t.slice(11, 16))}
             interval={Math.max(1, Math.floor(data.length / 8))}
-            tick={{ fill: "#5F7469", fontSize: 10 }}
+            tick={{ fill: AXIS_TICK, fontSize: 10 }}
             axisLine={false}
             tickLine={false}
           />
-          <YAxis domain={[0, yMax]} tick={{ fill: "#5F7469", fontSize: 10 }} axisLine={false} tickLine={false} width={44} />
+          <YAxis domain={[0, yMax]} tick={{ fill: AXIS_TICK, fontSize: 10 }} axisLine={false} tickLine={false} width={44} />
           {metric === "pm2_5" && (
             <>
               <ReferenceLine y={60} stroke="#A3E635" strokeDasharray="3 4" strokeOpacity={0.5} label={{ value: "NAQI 24h ‘satisfactory’ limit 60", fill: "#A3E635", fontSize: 9, position: "insideTopRight" }} />
@@ -119,12 +120,12 @@ export function TrendChart({ series, metric, pastHours = 48, futureHours = 72, h
 export function DailyBars({ rows, height = 200 }: { rows: { date: string; pm2_5_mean: number; aqi_mean: number | null }[]; height?: number }) {
   const reduce = useReducedMotion();
   return (
-    <div style={{ height }}>
+    <div style={{ height }} role="img" aria-label={dailySummary(rows)}>
       <ResponsiveContainer>
         <BarChart data={rows} margin={{ top: 8, right: 4, left: -18, bottom: 0 }}>
           <CartesianGrid stroke="rgba(124,231,180,0.06)" vertical={false} />
-          <XAxis dataKey="date" tickFormatter={(d: string) => d.slice(5)} tick={{ fill: "#5F7469", fontSize: 10 }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fill: "#5F7469", fontSize: 10 }} axisLine={false} tickLine={false} />
+          <XAxis dataKey="date" tickFormatter={(d: string) => d.slice(5)} tick={{ fill: AXIS_TICK, fontSize: 10 }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fill: AXIS_TICK, fontSize: 10 }} axisLine={false} tickLine={false} />
           <Tooltip
             cursor={{ fill: "rgba(124,231,180,0.05)" }}
             content={({ active, payload }) =>
@@ -152,11 +153,11 @@ export function DailyBars({ rows, height = 200 }: { rows: { date: string; pm2_5_
 export function HourProfile({ rows, highlight, height = 180 }: { rows: { hour: number; pm2_5_mean: number }[]; highlight?: number[]; height?: number }) {
   const reduce = useReducedMotion();
   return (
-    <div style={{ height }}>
+    <div style={{ height }} role="img" aria-label={hourProfileSummary(rows, highlight)}>
       <ResponsiveContainer>
         <BarChart data={rows} margin={{ top: 8, right: 4, left: -18, bottom: 0 }}>
-          <XAxis dataKey="hour" tickFormatter={(h: number) => `${h}h`} interval={2} tick={{ fill: "#5F7469", fontSize: 10 }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fill: "#5F7469", fontSize: 10 }} axisLine={false} tickLine={false} />
+          <XAxis dataKey="hour" tickFormatter={(h: number) => `${h}h`} interval={2} tick={{ fill: AXIS_TICK, fontSize: 10 }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fill: AXIS_TICK, fontSize: 10 }} axisLine={false} tickLine={false} />
           <Tooltip
             cursor={{ fill: "rgba(124,231,180,0.05)" }}
             content={({ active, payload }) =>

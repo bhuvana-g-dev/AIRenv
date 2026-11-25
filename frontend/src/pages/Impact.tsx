@@ -4,7 +4,10 @@ import { Bike, Calculator, Car, Info, Leaf, ShieldCheck, Users, Wind, Zap } from
 import { useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { DemoBanner } from "../components/env";
+import { AXIS_TICK } from "../components/charts";
 import { AnimatedNumber, Badge, Card, CardHeader, EmptyState, Field, PageHeader, Skeleton, Tabs } from "../components/ui";
+import { tabId, tabPanelId } from "../lib/tabs";
+import { seriesSummary } from "../lib/chartSummary";
 import { api, post } from "../lib/api";
 import { colorForPm25 } from "../lib/aqi";
 import { fmtNum, localDayHour } from "../lib/format";
@@ -59,7 +62,7 @@ function Assumptions({ items, title = "Assumptions & method" }: { items: string[
   return (
     <div className="rounded-xl border hairline bg-black/15 p-3.5">
       <p className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-muted">
-        <Info className="h-3.5 w-3.5" /> {title}
+        <Info aria-hidden="true" className="h-3.5 w-3.5" /> {title}
       </p>
       <ul className="space-y-1 text-[11px] leading-relaxed text-muted">
         {items.map((a) => (
@@ -97,12 +100,15 @@ function ExposureTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [planned, hours, intensity, location.lat, location.lon]);
   const r = m.data;
+  const forecastLabel = r
+    ? `Forecast PM2.5 for the next ${r.forecast.length} hours${r.planned ? `; planned window from ${localDayHour(r.planned.start)} averages ${fmtNum(r.planned.mean_pm2_5)} µg/m³` : ""}${r.best ? `; cleanest window from ${localDayHour(r.best.start)} averages ${fmtNum(r.best.mean_pm2_5)} µg/m³` : ""}.`
+    : "";
   const bars = r && r.planned && r.best ? [{ name: "Planned", v: r.planned.inhaled_ug, c: colorForPm25(r.planned.mean_pm2_5) }, { name: "Best window", v: r.best.inhaled_ug, c: "#35D399" }] : [];
 
   return (
     <div className="grid gap-4 lg:grid-cols-[340px_1fr]">
       <Card hover={false}>
-        <CardHeader icon={<ShieldCheck className="h-4 w-4" />} title="Personal exposure" subtitle="Compare an activity at different times" />
+        <CardHeader icon={<ShieldCheck aria-hidden="true" className="h-4 w-4" />} title="Personal exposure" subtitle="Compare an activity at different times" />
         <div className="space-y-3">
           <Field label="Planned start (forecast hours)">
             <select className="input" value={planned} onChange={(e) => setPlanned(e.target.value)}>
@@ -129,12 +135,16 @@ function ExposureTab() {
       </Card>
       <div className="space-y-4">
         {m.isPending && !r ? (
-          <Skeleton className="h-80" />
+          <Skeleton className="h-80" label="Calculating exposure…" />
         ) : m.isError ? (
           <Card hover={false}><EmptyState title="Exposure estimate unavailable" description={(m.error as Error).message} /></Card>
         ) : r ? (
           <>
             {r.is_demo && <DemoBanner />}
+            <p className="sr-only" aria-live="polite">
+              Estimated inhaled PM2.5: {fmtNum(r.planned?.inhaled_ug)} µg at the planned time, {fmtNum(r.best?.inhaled_ug)} µg at the cleanest window
+              {r.reduction_pct != null && r.reduction_pct > 0 ? `, a ${fmtNum(r.reduction_pct)}% reduction` : ""}.
+            </p>
             <div className="grid gap-4 md:grid-cols-3">
               <Card hover={false}>
                 <p className="text-xs text-muted">Estimated inhaled PM2.5 at planned time</p>
@@ -160,7 +170,7 @@ function ExposureTab() {
             </div>
             <Card hover={false}>
               <CardHeader title="Forecast PM2.5 & activity windows" subtitle="Orange: planned window · green: cleanest window · model forecast" />
-              <div className="h-64">
+              <div className="h-64" role="img" aria-label={forecastLabel}>
                 <ResponsiveContainer>
                   <AreaChart data={r.forecast} margin={{ left: -16, right: 6, top: 6 }}>
                     <defs>
@@ -170,8 +180,8 @@ function ExposureTab() {
                       </linearGradient>
                     </defs>
                     <CartesianGrid stroke="rgba(124,231,180,0.06)" vertical={false} />
-                    <XAxis dataKey="time" tickFormatter={(t: string) => t.slice(11, 16)} interval={5} tick={{ fill: "#5F7469", fontSize: 10 }} axisLine={false} tickLine={false} />
-                    <YAxis tick={{ fill: "#5F7469", fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <XAxis dataKey="time" tickFormatter={(t: string) => t.slice(11, 16)} interval={5} tick={{ fill: AXIS_TICK, fontSize: 10 }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fill: AXIS_TICK, fontSize: 10 }} axisLine={false} tickLine={false} />
                     <Tooltip labelFormatter={(t) => localDayHour(String(t))} contentStyle={{ background: "#10231B", border: "1px solid rgba(124,231,180,0.15)", borderRadius: 12, fontSize: 12 }} formatter={(v) => [`${v} µg/m³`, "PM2.5"]} />
                     {r.planned && <ReferenceArea x1={r.planned.start} x2={r.forecast[Math.min(r.forecast.findIndex((f) => f.time === r.planned!.start) + hours, r.forecast.length - 1)]?.time} fill="#FB923C" fillOpacity={0.15} />}
                     {r.best && <ReferenceArea x1={r.best.start} x2={r.forecast[Math.min(r.forecast.findIndex((f) => f.time === r.best!.start) + hours, r.forecast.length - 1)]?.time} fill="#35D399" fillOpacity={0.18} />}
@@ -180,7 +190,7 @@ function ExposureTab() {
                 </ResponsiveContainer>
               </div>
               <div className="mt-3 grid gap-3 md:grid-cols-2">
-                <div className="h-28">
+                <div className="h-28" role="img" aria-label={seriesSummary("Estimated inhaled PM2.5", bars.map((b) => ({ label: b.name, value: b.v })), "µg")}>
                   <ResponsiveContainer>
                     <BarChart data={bars} layout="vertical" margin={{ left: 10, right: 20 }}>
                       <XAxis type="number" hide />
@@ -237,7 +247,7 @@ function EmissionsTab() {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Card hover={false}>
-        <CardHeader icon={<Car className="h-4 w-4" />} title="Transport alternative" subtitle="Estimated CO₂e avoided by switching mode" />
+        <CardHeader icon={<Car aria-hidden="true" className="h-4 w-4" />} title="Transport alternative" subtitle="Estimated CO₂e avoided by switching mode" />
         <div className="grid grid-cols-2 gap-3">
           <Field label="Current mode">
             <select className="input" value={trip.baseline_mode} onChange={(ev) => setTrip({ ...trip, baseline_mode: ev.target.value })}>
@@ -286,7 +296,7 @@ function EmissionsTab() {
               ].map((b) => (
                 <div key={b.l} className="flex items-center gap-3 text-xs">
                   <span className="w-20 text-muted">{b.l}</span>
-                  <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-white/5">
+                  <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-white/5" aria-hidden="true">
                     <motion.div className="h-full rounded-full" style={{ background: b.c }} initial={{ width: 0 }} animate={{ width: `${(b.v / Math.max(t.data.baseline_kg_per_week, t.data.alternative_kg_per_week, 0.01)) * 100}%` }} transition={{ duration: 0.8 }} />
                   </div>
                   <span className="w-24 text-right tabular-nums">{fmtNum(b.v, 1)} kg/wk</span>
@@ -296,11 +306,11 @@ function EmissionsTab() {
             <Assumptions items={[...t.data.methodology, t.data.source]} title="Methodology & uncertainty" />
           </motion.div>
         )}
-        {t.isError && <p className="mt-3 text-xs text-orange-300">{(t.error as Error).message}</p>}
+        {t.isError && <p role="alert" className="mt-3 text-xs text-orange-300">{(t.error as Error).message}</p>}
       </Card>
 
       <Card hover={false}>
-        <CardHeader icon={<Zap className="h-4 w-4" />} title="Energy alternative" subtitle="Estimated CO₂ from electricity or LPG saved" />
+        <CardHeader icon={<Zap aria-hidden="true" className="h-4 w-4" />} title="Energy alternative" subtitle="Estimated CO₂ from electricity or LPG saved" />
         <div className="grid grid-cols-2 gap-3">
           <Field label="Electricity saved (kWh / month)">
             <input type="number" min={0} className="input" value={energy.electricity_kwh_saved_per_month} onChange={(ev) => setEnergy({ ...energy, electricity_kwh_saved_per_month: Math.max(0, Number(ev.target.value)) })} />
@@ -327,7 +337,7 @@ function EmissionsTab() {
           </div>
         )}
         <div className="mt-4 rounded-xl border border-cyan/20 bg-cyan/5 p-3 text-[11px] leading-relaxed text-muted">
-          <Wind className="mb-1 h-3.5 w-3.5 text-cyan" />
+          <Wind aria-hidden="true" className="mb-1 h-3.5 w-3.5 text-cyan" />
           CO₂e is a greenhouse-gas measure. Lower CO₂e often comes with lower local exhaust, but these figures do not describe changes in PM2.5 or AQI near you.
         </div>
       </Card>
@@ -340,13 +350,13 @@ function CommunityTab() {
     queryKey: ["impact-community"],
     queryFn: () => api<{ communities: { id: string; name: string; type: string; is_demo: boolean; stats: CommunityStats }[]; open_burning_concerns_detected: number; disclaimer: string }>("/api/impact/community"),
   });
-  if (q.isLoading) return <Skeleton className="h-72" />;
+  if (q.isLoading) return <Skeleton className="h-72" label="Loading community impact…" />;
   if (q.isError) return <Card hover={false}><EmptyState title="Community impact unavailable" description={(q.error as Error).message} /></Card>;
   const data = q.data!;
   if (data.communities.length === 0)
     return (
       <Card hover={false}>
-        <EmptyState icon={<Users className="h-5 w-5" />} title="No communities" description="Create or join a community on the Community page to see aggregated, verified actions here." />
+        <EmptyState icon={<Users aria-hidden="true" className="h-5 w-5" />} title="No communities" description="Create or join a community on the Community page to see aggregated, verified actions here." />
       </Card>
     );
   return (
@@ -354,16 +364,17 @@ function CommunityTab() {
       <div className="rounded-xl border border-yellow-400/20 bg-yellow-400/5 px-4 py-2.5 text-xs text-yellow-100">{data.disclaimer}</div>
       {data.communities.map((c) => (
         <Card key={c.id} hover={false}>
-          <CardHeader icon={<Leaf className="h-4 w-4" />} title={<>{c.name} {c.is_demo && <Badge color="#A78BFA">demo</Badge>}</>} subtitle={`${c.stats.totals.verified_records} verified records · ${c.stats.totals.pending_records} pending`} />
+          <CardHeader icon={<Leaf aria-hidden="true" className="h-4 w-4" />} title={<>{c.name} {c.is_demo && <Badge color="#A78BFA">demo</Badge>}</>} subtitle={`${c.stats.totals.verified_records} verified records · ${c.stats.totals.pending_records} pending`} />
           <div className="grid gap-4 md:grid-cols-[1fr_300px]">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
+                <caption className="sr-only">Verified actions by initiative type for {c.name}</caption>
                 <thead className="text-muted">
                   <tr className="border-b hairline">
-                    <th className="py-2 font-medium">Initiative</th>
-                    <th className="py-2 font-medium">Verified participants</th>
-                    <th className="py-2 font-medium">Verified quantity</th>
-                    <th className="py-2 font-medium">Unverified</th>
+                    <th scope="col" className="py-2 font-medium">Initiative</th>
+                    <th scope="col" className="py-2 font-medium">Verified participants</th>
+                    <th scope="col" className="py-2 font-medium">Verified quantity</th>
+                    <th scope="col" className="py-2 font-medium">Unverified</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -373,7 +384,7 @@ function CommunityTab() {
                       <td className="py-2">
                         <div className="flex items-center gap-2">
                           <span className="w-10 tabular-nums">{r.verified_participants}</span>
-                          <motion.span className="h-1.5 rounded-full bg-emerald" initial={{ width: 0 }} animate={{ width: Math.min(120, r.verified_participants) }} />
+                          <motion.span aria-hidden="true" className="h-1.5 rounded-full bg-emerald" initial={{ width: 0 }} animate={{ width: Math.min(120, r.verified_participants) }} />
                         </div>
                       </td>
                       <td className="py-2 tabular-nums">{fmtNum(r.verified_quantity)} {r.unit}</td>
@@ -412,18 +423,28 @@ export default function Impact() {
         description="Three separate kinds of impact, each with its method and uncertainty. None of them is presented as a change in your neighbourhood's air quality."
         actions={
           <Tabs
+            label="Impact type"
+            idPrefix="impact"
             layoutId="impact-tab"
             value={tab}
             onChange={setTab}
             tabs={[
-              { value: "exposure", label: <span className="flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5" />Exposure</span> },
-              { value: "emissions", label: <span className="flex items-center gap-1.5"><Bike className="h-3.5 w-3.5" />Emissions</span> },
-              { value: "community", label: <span className="flex items-center gap-1.5"><Calculator className="h-3.5 w-3.5" />Community</span> },
+              { value: "exposure", label: <span className="flex items-center gap-1.5"><ShieldCheck aria-hidden="true" className="h-3.5 w-3.5" />Exposure</span> },
+              { value: "emissions", label: <span className="flex items-center gap-1.5"><Bike aria-hidden="true" className="h-3.5 w-3.5" />Emissions</span> },
+              { value: "community", label: <span className="flex items-center gap-1.5"><Calculator aria-hidden="true" className="h-3.5 w-3.5" />Community</span> },
             ]}
           />
         }
       />
-      <motion.div key={tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
+      <motion.div
+        key={tab}
+        id={tabPanelId("impact")}
+        role="tabpanel"
+        aria-labelledby={tabId("impact", tab)}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+      >
         {tab === "exposure" && <ExposureTab />}
         {tab === "emissions" && <EmissionsTab />}
         {tab === "community" && <CommunityTab />}

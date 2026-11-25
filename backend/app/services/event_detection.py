@@ -27,7 +27,7 @@ INDOOR_HINTS = [r"indoor", r"\bhall\b", r"auditorium", r"classroom", r"clubhouse
 BURNING = [r"\bburn", r"bonfire", r"set (?:it )?on fire", r"\bfire\b.*(?:waste|garbage|leaves|kachra|kooda)",
            r"(?:waste|garbage|leaves|kachra|kooda|trash).*\b(?:burn|fire|jala)", r"\bjala(?:o|na|denge|dete)",
            r"open burning", r"stubble"]
-TRANSPORT = [r"carpool", r"car pool", r"ride share", r"school bus", r"pick ?up", r"drop off", r"van"]
+TRANSPORT = [r"carpool", r"car pool", r"ride share", r"school bus", r"\bpick ?up\b", r"\bdrop off\b", r"\bvan\b"]
 
 WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
 
@@ -54,9 +54,10 @@ def parse_time(text: str) -> tuple[str | None, str]:
             h += 12  # "at 4" in an activity context almost always means afternoon
         if h <= 23:
             return f"{h:02d}:00", "approximate"
-    for word, hhmm in (("early morning", "06:30"), ("morning", "08:00"), ("noon", "12:00"),
-                       ("afternoon", "15:00"), ("evening", "17:30"), ("tonight", "20:00"), ("night", "20:00")):
-        if word in text:
+    # Whole-word matches, longest phrases first ("afternoon" contains "noon").
+    for word, hhmm in (("early morning", "06:30"), ("afternoon", "15:00"), ("morning", "08:00"),
+                       ("noon", "12:00"), ("evening", "17:30"), ("tonight", "20:00"), ("night", "20:00")):
+        if re.search(rf"\b{word}\b", text):
             return hhmm, "part_of_day"
     return None, "none"
 
@@ -139,9 +140,20 @@ MENTION = re.compile(r"@\w+")
 URL = re.compile(r"https?://\S+")
 
 
+DATE_LIKE = re.compile(r"^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$")
+MIN_PHONE_DIGITS = 10  # Indian mobile numbers have 10 digits; dd-mm-yyyy dates have 8.
+
+
+def _phone_or_keep(m: re.Match[str]) -> str:
+    candidate = m.group(0)
+    if DATE_LIKE.match(candidate) or sum(ch.isdigit() for ch in candidate) < MIN_PHONE_DIGITS:
+        return candidate
+    return "[phone]"
+
+
 def redact(text: str) -> str:
     """Remove direct identifiers before any further processing (e.g. optional AI extraction)."""
     text = URL.sub("[link]", text)
     text = EMAIL.sub("[email]", text)
-    text = PHONE.sub("[phone]", text)
+    text = PHONE.sub(_phone_or_keep, text)
     return MENTION.sub("[user]", text)

@@ -63,6 +63,30 @@ class Settings(BaseSettings):
     # --- Rate limiting ---------------------------------------------------
     rate_limit_per_minute: int = Field(120, alias="RATE_LIMIT_PER_MINUTE")
     ai_rate_limit_per_minute: int = Field(12, alias="AI_RATE_LIMIT_PER_MINUTE")
+    # Number of reverse proxies in front of the app that append to X-Forwarded-For.
+    # 0 = ignore the header (direct connections). Render and most PaaS use 1.
+    # Trusting the header without a proxy would let clients spoof their IP and bypass rate limits.
+    trusted_proxy_hops: int = Field(0, ge=0, le=5, alias="TRUSTED_PROXY_HOPS")
+    max_request_bytes: int = Field(256 * 1024, ge=1024, alias="MAX_REQUEST_BYTES")
+    manual_refresh_cooldown_seconds: int = Field(60, ge=0, alias="MANUAL_REFRESH_COOLDOWN_SECONDS")
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment.lower() == "production"
+
+    def validate_for_runtime(self) -> None:
+        """Refuse unsafe configurations before the app starts serving traffic."""
+        if not self.is_production:
+            return
+        problems = []
+        if self.effective_auth_mode != "firebase":
+            problems.append("AUTH_MODE must resolve to 'firebase' in production (local mode has no sign-in).")
+        if any(o == "*" for o in self.cors_origin_list):
+            problems.append("CORS_ORIGINS must list explicit origins in production, not '*'.")
+        if self.telegram_enabled and self.telegram_mode == "webhook" and not self.telegram_webhook_secret:
+            problems.append("TELEGRAM_WEBHOOK_SECRET is required for webhook mode.")
+        if problems:
+            raise RuntimeError("Unsafe production configuration: " + " ".join(problems))
 
     @property
     def cors_origin_list(self) -> list[str]:

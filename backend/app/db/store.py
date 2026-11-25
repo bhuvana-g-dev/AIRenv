@@ -10,10 +10,12 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sqlite3
 import threading
 from abc import ABC, abstractmethod
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from app.config import get_settings
 
@@ -80,6 +82,39 @@ class DocumentStore(ABC):
         return doc
 
 
+_FIELD_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$")
+# Fields used in equality filters on hot paths; expression indexes make those lookups O(log n).
+_INDEXED_FIELDS = ("uid", "community_id", "location_id", "group_id", "location.id", "is_demo")
+
+
+def _sql_value(value: Any) -> Any:
+    # json_extract returns 1/0 for JSON true/false.
+    return int(value) if isinstance(value, bool) else value
+
+
+def _pushdown(filters: Iterable[Filter]) -> tuple[str, list[Any]]:
+    """Translate the filters SQLite can evaluate exactly into a WHERE fragment.
+
+    Only scalar ``==`` and ``in`` filters are pushed down. Everything is still re-checked by
+    ``_match`` afterwards, so pushdown can only narrow the candidate rows, never change results.
+    Field names are validated against a strict pattern before being placed in the JSON path
+    literal (which must be inlined for SQLite to use the expression indexes).
+    """
+    clauses: list[str] = []
+    params: list[Any] = []
+    for field, op, value in filters:
+        if not _FIELD_RE.match(field):
+            raise ValueError(f"Invalid field name: {field!r}")
+        expr = f"json_extract(data, '$.{field}')"
+        if op == "==" and isinstance(value, (str, int, float, bool)):
+            clauses.append(f"{expr} = ?")
+            params.append(_sql_value(value))
+        elif op == "in" and value and all(isinstance(v, (str, int, float, bool)) for v in value):
+            clauses.append(f"{expr} IN ({','.join('?' * len(value))})")
+            params.extend(_sql_value(v) for v in value)
+    return (" AND " + " AND ".join(clauses)) if clauses else "", params
+
+
 class SQLiteStore(DocumentStore):
     name = "sqlite"
 
@@ -89,10 +124,17 @@ class SQLiteStore(DocumentStore):
         self._conn = sqlite3.connect(path, check_same_thread=False)
         self._lock = threading.Lock()
         with self._lock:
+            if path != ":memory:":
+                self._conn.execute("PRAGMA journal_mode=WAL")
+                self._conn.execute("PRAGMA synchronous=NORMAL")
             self._conn.execute(
                 "CREATE TABLE IF NOT EXISTS docs (collection TEXT NOT NULL, id TEXT NOT NULL, "
                 "data TEXT NOT NULL, PRIMARY KEY (collection, id))"
             )
+            for f in _INDEXED_FIELDS:
+                name = "idx_docs_" + f.replace(".", "_")
+                self._conn.execute(
+                    f"CREATE INDEX IF NOT EXISTS {name} ON docs(collection, json_extract(data, '$.{f}'))")
             self._conn.commit()
 
     def _get(self, collection: str, doc_id: str) -> dict[str, Any] | None:
@@ -117,9 +159,12 @@ class SQLiteStore(DocumentStore):
             self._conn.execute("DELETE FROM docs WHERE collection=? AND id=?", (collection, doc_id))
             self._conn.commit()
 
-    def _all(self, collection: str) -> list[dict[str, Any]]:
+    def _select(self, collection: str, filters: list[Filter]) -> list[dict[str, Any]]:
+        where, params = _pushdown(filters)
         with self._lock:
-            rows = self._conn.execute("SELECT data FROM docs WHERE collection=?", (collection,)).fetchall()
+            # `where` contains only validated field names and `?` placeholders (see _pushdown).
+            rows = self._conn.execute(f"SELECT data FROM docs WHERE collection=?{where}",  # noqa: S608
+                                      (collection, *params)).fetchall()
         return [json.loads(r[0]) for r in rows]
 
     async def get(self, collection: str, doc_id: str) -> dict[str, Any] | None:
@@ -132,7 +177,7 @@ class SQLiteStore(DocumentStore):
         await asyncio.to_thread(self._delete, collection, doc_id)
 
     async def query(self, collection, filters=None, order_by=None, descending=False, limit=None):
-        docs = await asyncio.to_thread(self._all, collection)
+        docs = await asyncio.to_thread(self._select, collection, filters or [])
         docs = [d for d in docs if _match(d, filters or [])]
         if order_by:
             docs.sort(key=lambda d: (d.get(order_by) is None, d.get(order_by)), reverse=descending)

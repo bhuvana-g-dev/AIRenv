@@ -5,9 +5,8 @@ from pydantic import BaseModel, Field
 
 from app.api.deps import bundle_or_503, location_param, profile_of
 from app.core.security import CurrentUser, get_optional_user
-from app.services import assistant_service
+from app.services import assistant_service, recommendation_engine
 from app.services import community_service as cs
-from app.services import recommendation_engine
 from app.services.location_service import Location, make_location
 
 router = APIRouter(prefix="/api", tags=["intelligence"])

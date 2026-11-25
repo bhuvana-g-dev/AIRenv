@@ -23,11 +23,13 @@ import {
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Aurora, Logo, ParticleField } from "../components/effects";
+import { SkipLink } from "../components/SkipLink";
 import { AqiGauge } from "../components/env";
-import { Badge, Button, cn } from "../components/ui";
+import { Badge, Button } from "../components/ui";
 import { api } from "../lib/api";
 import { CATEGORY_COLORS, colorForAqi } from "../lib/aqi";
 import type { Snapshot } from "../lib/types";
+import { cn } from "../lib/cn";
 
 /* Illustrative values used only when the live API cannot be reached. Always labelled. */
 const DEMO_SNAPSHOT = {
@@ -83,7 +85,7 @@ function LiveSample() {
       <div className="mb-4 flex items-center justify-between">
         <div>
           <p className="text-sm font-medium">{live ? snap.location.name : "New Delhi"}</p>
-          <p className="text-[11px] text-faint">{live ? `Observed ${snap.observed_local?.slice(11, 16)} local · ${snap.utc_offset}` : failed ? "Live service unreachable" : "Connecting to live data…"}</p>
+          <p role="status" className="text-[11px] text-faint">{live ? `Observed ${snap.observed_local?.slice(11, 16)} local · ${snap.utc_offset}` : failed ? "Live service unreachable" : "Connecting to live data…"}</p>
         </div>
         {live ? (
           <Badge color="#35D399" dot>
@@ -151,9 +153,11 @@ export default function Landing() {
   const { scrollYProgress } = useScroll({ target: heroRef, offset: ["start start", "end start"] });
   const yHero = useTransform(scrollYProgress, [0, 1], [0, 120]);
   const opacityHero = useTransform(scrollYProgress, [0, 0.8], [1, 0]);
+  const reduce = useReducedMotion();
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-bg">
+      <SkipLink />
       {/* Nav */}
       <header className="fixed inset-x-0 top-0 z-50">
         <div className="mx-auto mt-3 flex max-w-6xl items-center justify-between rounded-2xl border hairline bg-bg/60 px-4 py-2.5 backdrop-blur-xl md:px-5">
@@ -165,12 +169,13 @@ export default function Landing() {
             <a href="#community" className="hover:text-ink">Community</a>
             <a href="#impact" className="hover:text-ink">Impact</a>
           </nav>
-          <Button size="sm" onClick={() => navigate("/app")} icon={<ArrowRight className="h-3.5 w-3.5" />} className="flex-row-reverse">
+          <Button size="sm" onClick={() => navigate("/app")} icon={<ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />} className="flex-row-reverse">
             Open dashboard
           </Button>
         </div>
       </header>
 
+      <main id="main-content" tabIndex={-1} className="outline-none">
       {/* Hero */}
       <section ref={heroRef} className="relative flex min-h-[100svh] items-center pt-24">
         <Aurora />
@@ -198,10 +203,10 @@ export default function Landing() {
               Understand your environment. Anticipate pollution risks. Make smarter decisions together.
             </motion.p>
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, delay: 0.45 }} className="mt-9 flex flex-wrap gap-3">
-              <Button size="lg" onClick={() => document.getElementById("how")?.scrollIntoView({ behavior: "smooth" })} icon={<Sparkles className="h-4 w-4" />}>
+              <Button size="lg" onClick={() => document.getElementById("how")?.scrollIntoView({ behavior: reduce ? "auto" : "smooth" })} icon={<Sparkles aria-hidden="true" className="h-4 w-4" />}>
                 Explore Intelligence
               </Button>
-              <Button size="lg" variant="outline" onClick={() => navigate("/app")} icon={<Wind className="h-4 w-4" />}>
+              <Button size="lg" variant="outline" onClick={() => navigate("/app")} icon={<Wind aria-hidden="true" className="h-4 w-4" />}>
                 View Live Air Quality
               </Button>
             </motion.div>
@@ -211,7 +216,7 @@ export default function Landing() {
           </div>
           <LiveSample />
         </motion.div>
-        <motion.div className="absolute bottom-8 left-1/2 hidden -translate-x-1/2 md:block" animate={{ y: [0, 8, 0] }} transition={{ duration: 2.4, repeat: Infinity }}>
+        <motion.div aria-hidden="true" className="absolute bottom-8 left-1/2 hidden -translate-x-1/2 md:block" animate={{ y: [0, 8, 0] }} transition={{ duration: 2.4, repeat: Infinity }}>
           <div className="h-10 w-6 rounded-full border hairline p-1">
             <div className="mx-auto h-2 w-1 rounded-full bg-mint/70" />
           </div>
@@ -233,7 +238,7 @@ export default function Landing() {
           ].map((c, i) => (
             <Reveal key={c.t} delay={i * 0.1}>
               <div className="glass h-full rounded-2xl p-6">
-                <c.icon className="h-6 w-6 text-mint" />
+                <c.icon aria-hidden="true" className="h-6 w-6 text-mint" />
                 <h3 className="mt-4 font-display text-lg font-semibold">{c.t}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-muted">{c.d}</p>
               </div>
@@ -258,7 +263,7 @@ export default function Landing() {
                 <div className="glass relative h-full rounded-2xl p-6">
                   <div className="flex items-center justify-between">
                     <span className="grid h-11 w-11 place-items-center rounded-xl" style={{ background: `${s.c}18`, color: s.c }}>
-                      <s.icon className="h-5 w-5" />
+                      <s.icon aria-hidden="true" className="h-5 w-5" />
                     </span>
                     <span className="font-mono text-xs text-faint">0{i + 1}</span>
                   </div>
@@ -291,7 +296,7 @@ export default function Landing() {
                 <div>
                   <div className="flex items-center gap-3">
                     <span className="grid h-12 w-12 place-items-center rounded-2xl" style={{ background: `${e.color}18`, color: e.color }}>
-                      <e.icon className="h-6 w-6" />
+                      <e.icon aria-hidden="true" className="h-6 w-6" />
                     </span>
                     <Badge color={e.color}>{e.tag}</Badge>
                   </div>
@@ -300,7 +305,7 @@ export default function Landing() {
                   <ul className="mt-5 space-y-2.5">
                     {e.points.map((p) => (
                       <li key={p} className="flex items-start gap-2.5 text-sm">
-                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" style={{ color: e.color }} />
+                        <CheckCircle2 aria-hidden="true" className="mt-0.5 h-4 w-4 shrink-0" style={{ color: e.color }} />
                         {p}
                       </li>
                     ))}
@@ -325,7 +330,7 @@ export default function Landing() {
           ].map((c, i) => (
             <Reveal key={c.t} delay={i * 0.08}>
               <div className="glass group h-full rounded-2xl p-6 transition-transform hover:-translate-y-1">
-                <c.icon className="h-6 w-6 text-mint transition-transform group-hover:scale-110" />
+                <c.icon aria-hidden="true" className="h-6 w-6 text-mint transition-transform group-hover:scale-110" />
                 <h3 className="mt-4 font-display text-lg font-semibold">{c.t}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-muted">{c.d}</p>
               </div>
@@ -347,7 +352,7 @@ export default function Landing() {
             <Reveal key={c.t} delay={i * 0.1}>
               <div className="glass h-full rounded-2xl p-6">
                 <span className="grid h-11 w-11 place-items-center rounded-xl" style={{ background: `${c.c}18`, color: c.c }}>
-                  <c.icon className="h-5 w-5" />
+                  <c.icon aria-hidden="true" className="h-5 w-5" />
                 </span>
                 <h3 className="mt-4 font-display text-lg font-semibold">{c.t}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-muted">{c.d}</p>
@@ -360,11 +365,13 @@ export default function Landing() {
             <h3 className="font-display text-2xl font-semibold">See what the air is doing right now.</h3>
             <p className="mt-1 text-sm text-muted">Live model data for your location, with every source and timestamp shown.</p>
           </div>
-          <Button size="lg" onClick={() => navigate("/app")} icon={<ArrowRight className="h-4 w-4" />} className="flex-row-reverse">
+          <Button size="lg" onClick={() => navigate("/app")} icon={<ArrowRight aria-hidden="true" className="h-4 w-4" />} className="flex-row-reverse">
             Open the dashboard
           </Button>
         </Reveal>
       </section>
+
+      </main>
 
       {/* 8. Footer */}
       <footer className="border-t hairline px-5 py-14">
@@ -375,7 +382,7 @@ export default function Landing() {
             <p className="mt-4 max-w-md text-[11px] leading-relaxed text-faint">AIRenv provides general information, not medical advice. Forecasts are estimates. Indoor air is not measured. Consult a doctor about health concerns.</p>
           </div>
           <div>
-            <p className="label mb-3">Product</p>
+            <h2 className="label mb-3">Product</h2>
             <ul className="space-y-2 text-sm text-muted">
               <li><Link to="/app" className="hover:text-ink">Intelligence dashboard</Link></li>
               <li><Link to="/app/map" className="hover:text-ink">Air map</Link></li>
@@ -385,13 +392,13 @@ export default function Landing() {
             </ul>
           </div>
           <div>
-            <p className="label mb-3">Data &amp; attribution</p>
+            <h2 className="label mb-3">Data &amp; attribution</h2>
             <ul className="space-y-2 text-[12px] text-muted">
               <li>Air quality: Open-Meteo / Copernicus CAMS (CC BY 4.0)</li>
               <li>Stations: CPCB via data.gov.in, OpenAQ, Sensor.Community</li>
               <li>Maps © OpenStreetMap contributors (Leaflet)</li>
               <li>AQI method: CPCB National Air Quality Index</li>
-              <li className="flex items-center gap-1.5"><Bot className="h-3.5 w-3.5" /> AI: Google Gemini (optional)</li>
+              <li className="flex items-center gap-1.5"><Bot aria-hidden="true" className="h-3.5 w-3.5" /> AI: Google Gemini (optional)</li>
             </ul>
           </div>
         </div>
@@ -407,7 +414,7 @@ function EngineVisual({ id }: { id: string }) {
     return (
       <div className="rounded-2xl border hairline bg-[#0b1620] p-4">
         <div className="mb-3 flex items-center justify-between text-xs text-muted">
-          <span className="flex items-center gap-2"><MessageCircle className="h-3.5 w-3.5 text-cyan" /> Sunrise School Parents</span>
+          <span className="flex items-center gap-2"><MessageCircle aria-hidden="true" className="h-3.5 w-3.5 text-cyan" /> Sunrise School Parents</span>
           <Badge color="#94A89D">Example</Badge>
         </div>
         <div className="space-y-3">
@@ -415,7 +422,7 @@ function EngineVisual({ id }: { id: string }) {
             Tomorrow we are conducting outdoor sports activities at 3 PM.
           </motion.div>
           <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} transition={{ delay: 0.6 }} className="flex items-center gap-2 pl-1 text-[10px] text-faint">
-            <Sparkles className="h-3 w-3 text-violet" /> extracted: sports · tomorrow · 15:00 · outdoor · message text discarded
+            <Sparkles aria-hidden="true" className="h-3 w-3 text-violet" /> extracted: sports · tomorrow · 15:00 · outdoor · message text discarded
           </motion.div>
           <motion.div initial={{ opacity: 0, x: 10 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ delay: 1.1 }} className="ml-auto max-w-[90%] rounded-2xl rounded-tr-sm border border-cyan/20 bg-cyan/10 px-3.5 py-2.5 text-sm">
             🌫️ Tomorrow's forecast indicates elevated PM2.5 around the planned activity. Consider moving strenuous outdoor activities indoors or rescheduling them. Check the latest conditions before the event.
@@ -430,7 +437,7 @@ function EngineVisual({ id }: { id: string }) {
     return (
       <div className="rounded-2xl border hairline bg-black/25 p-5">
         <div className="mb-4 flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-violet" />
+          <Sparkles aria-hidden="true" className="h-4 w-4 text-violet" />
           <span className="text-sm font-semibold">Every recommendation answers six questions</span>
         </div>
         <div className="grid grid-cols-2 gap-2">
@@ -448,7 +455,7 @@ function EngineVisual({ id }: { id: string }) {
   return (
     <div className="rounded-2xl border hairline bg-black/25 p-5">
       <div className="mb-4 flex items-center justify-between text-xs text-muted">
-        <span className="flex items-center gap-2"><Radar className="h-3.5 w-3.5 text-mint" /> Hourly PM2.5 pattern</span>
+        <span className="flex items-center gap-2"><Radar aria-hidden="true" className="h-3.5 w-3.5 text-mint" /> Hourly PM2.5 pattern</span>
         <Badge color="#94A89D">Illustration</Badge>
       </div>
       <div className="flex h-40 items-end gap-1.5">

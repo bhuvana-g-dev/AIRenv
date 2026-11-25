@@ -12,11 +12,13 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import httpx
+
 from app.config import get_settings
-from app.core.http import client
+from app.core.http import client, describe_error
 from app.core.security import new_token
 from app.db.store import get_store
 from app.services import ambient_intelligence as ambient
@@ -33,12 +35,17 @@ _poll_task: asyncio.Task | None = None
 _status: dict[str, Any] = {"mode": None, "connected": False, "error": None, "last_update_at": None}
 
 
-async def call(method: str, payload: dict[str, Any] | None = None, timeout: float = 15) -> Any:
+async def call(method: str, payload: dict[str, Any] | None = None, request_timeout: float = 15) -> Any:
     token = get_settings().telegram_bot_token
     if not token:
         raise RuntimeError("Telegram is not configured (TELEGRAM_BOT_TOKEN)")
-    resp = await client().post(API.format(token=token, method=method), json=payload or {}, timeout=timeout)
-    data = resp.json()
+    try:
+        resp = await client().post(API.format(token=token, method=method), json=payload or {},
+                                   timeout=request_timeout)
+        data = resp.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        # The bot token is part of the URL; never surface the raw httpx message.
+        raise RuntimeError(f"Telegram {method} failed: {describe_error(exc)}") from None
     if not data.get("ok"):
         raise RuntimeError(f"Telegram {method} failed: {data.get('description')}")
     return data["result"]
@@ -102,7 +109,7 @@ async def _poll_loop() -> None:
     while True:
         try:
             updates = await call("getUpdates", {"offset": offset, "timeout": 25,
-                                                "allowed_updates": ["message", "my_chat_member"]}, timeout=35)
+                                                "allowed_updates": ["message", "my_chat_member"]}, request_timeout=35)
             for upd in updates:
                 offset = upd["update_id"] + 1
                 try:
@@ -141,7 +148,7 @@ async def _air_summary(loc: Location) -> str:
 
 
 async def handle_update(update: dict[str, Any]) -> None:
-    _status["last_update_at"] = datetime.now(timezone.utc).isoformat()
+    _status["last_update_at"] = datetime.now(UTC).isoformat()
     msg = update.get("message")
     if not msg or "text" not in msg:
         return
@@ -171,7 +178,7 @@ async def handle_update(update: dict[str, Any]) -> None:
         return
     ev = result["event"]
     fingerprint = hashlib.sha1(f"{chat_id}|{ev.get('kind')}|{ev.get('activity_type') or ev.get('concern_type')}|"
-                               f"{ev.get('date')}|{ev.get('time')}".encode()).hexdigest()[:16]
+                               f"{ev.get('date')}|{ev.get('time')}".encode(), usedforsecurity=False).hexdigest()[:16]
     if await store.get("community_events", fingerprint):
         return  # already captured this event
     advisory_status = "none"
@@ -179,9 +186,9 @@ async def handle_update(update: dict[str, Any]) -> None:
         advisory_status = "pending"
         if group.get("reply_mode") == "auto":
             last = group.get("last_reply_at")
-            if not last or datetime.fromisoformat(last) < datetime.now(timezone.utc) - GROUP_REPLY_COOLDOWN:
+            if not last or datetime.fromisoformat(last) < datetime.now(UTC) - GROUP_REPLY_COOLDOWN:
                 await send_message(chat_id, result["advisory"])
-                await store.update("tg_groups", str(chat_id), {"last_reply_at": datetime.now(timezone.utc).isoformat()})
+                await store.update("tg_groups", str(chat_id), {"last_reply_at": datetime.now(UTC).isoformat()})
                 advisory_status = "sent"
     if group.get("community_id"):
         retention = get_settings().event_retention_days
@@ -202,9 +209,9 @@ async def _handle_command(cmd: str, arg: str, msg: dict[str, Any], chat_id: int,
     if cmd == "/start":
         if arg:
             link = await store.get("tg_link_codes", arg)
-            if link and link["expires_at"] > datetime.now(timezone.utc).isoformat():
+            if link and link["expires_at"] > datetime.now(UTC).isoformat():
                 await store.update("users", link["uid"], {"telegram": {
-                    "chat_id": chat_id, "linked_at": datetime.now(timezone.utc).isoformat(),
+                    "chat_id": chat_id, "linked_at": datetime.now(UTC).isoformat(),
                     "username": from_user.get("username")}})
                 await store.delete("tg_link_codes", arg)
                 await send_message(chat_id, "✅ Your AIRenv account is linked. You will receive alerts here based on "
@@ -243,7 +250,7 @@ async def _handle_command(cmd: str, arg: str, msg: dict[str, Any], chat_id: int,
             "reply_mode": "approval", "location": None, "is_demo": False}
         if cmd == "/optin":
             code = new_token(4)
-            existing.update({"authorized": True, "opted_in_at": datetime.now(timezone.utc).isoformat(),
+            existing.update({"authorized": True, "opted_in_at": datetime.now(UTC).isoformat(),
                              "connect_code": code})
             await store.set("tg_groups", str(chat_id), existing)
             await send_message(chat_id, "✅ Conversation intelligence enabled for this group. AIRenv will only "
@@ -273,7 +280,7 @@ async def _handle_command(cmd: str, arg: str, msg: dict[str, Any], chat_id: int,
 
 async def create_link_code(uid: str) -> dict[str, Any]:
     code = new_token(6)
-    expires = datetime.now(timezone.utc) + timedelta(minutes=15)
+    expires = datetime.now(UTC) + timedelta(minutes=15)
     await get_store().set("tg_link_codes", code, {"uid": uid, "expires_at": expires.isoformat()})
     username = (_bot_info or {}).get("username")
     return {"code": code, "expires_at": expires.isoformat(),

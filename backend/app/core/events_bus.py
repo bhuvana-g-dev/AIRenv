@@ -7,6 +7,7 @@ Topics:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 from collections import defaultdict
 from typing import Any
@@ -33,11 +34,9 @@ class EventBus:
                 q.put_nowait(msg)
             except asyncio.QueueFull:
                 # Slow consumer: drop the oldest message rather than block producers.
-                try:
+                with contextlib.suppress(asyncio.QueueEmpty, asyncio.QueueFull):
                     q.get_nowait()
                     q.put_nowait(msg)
-                except Exception:
-                    pass
 
     def subscriber_count(self) -> int:
         return len({id(q) for subs in self._subs.values() for q in subs})

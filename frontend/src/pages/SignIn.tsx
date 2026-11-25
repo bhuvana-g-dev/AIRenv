@@ -3,6 +3,9 @@ import { useState } from "react";
 import { Aurora, Logo, ParticleField } from "../components/effects";
 import { Button, Field } from "../components/ui";
 import { signInWithEmail, signInWithGoogle } from "../lib/auth";
+import { APP_NAME, useDocumentTitle } from "../lib/useDocumentTitle";
+
+const ERROR_ID = "signin-error";
 
 export default function SignIn() {
   const [email, setEmail] = useState("");
@@ -10,6 +13,7 @@ export default function SignIn() {
   const [create, setCreate] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useDocumentTitle(`${create ? "Create account" : "Sign in"} · ${APP_NAME}`);
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -23,8 +27,10 @@ export default function SignIn() {
     }
   };
 
+  const describedBy = error ? ERROR_ID : undefined;
+
   return (
-    <div className="relative grid min-h-screen place-items-center overflow-hidden bg-bg px-4">
+    <main id="main-content" className="relative grid min-h-screen place-items-center overflow-hidden bg-bg px-4">
       <Aurora />
       <ParticleField density={0.7} />
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-strong relative w-full max-w-sm rounded-3xl p-7">
@@ -35,30 +41,56 @@ export default function SignIn() {
           Continue with Google
         </Button>
         <div className="my-4 flex items-center gap-3 text-[11px] text-faint">
-          <span className="h-px flex-1 bg-white/10" /> or <span className="h-px flex-1 bg-white/10" />
+          <span aria-hidden="true" className="h-px flex-1 bg-white/10" /> or <span aria-hidden="true" className="h-px flex-1 bg-white/10" />
         </div>
         <form
           className="space-y-3"
+          aria-label={create ? "Create account with email" : "Sign in with email"}
           onSubmit={(e) => {
             e.preventDefault();
             void run(() => signInWithEmail(email, password, create));
           }}
         >
           <Field label="Email">
-            <input type="email" required className="input" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
+            <input
+              type="email"
+              required
+              aria-required="true"
+              aria-invalid={error ? true : undefined}
+              aria-describedby={describedBy}
+              className="input"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+            />
           </Field>
-          <Field label="Password">
-            <input type="password" required minLength={8} className="input" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={create ? "new-password" : "current-password"} />
+          <Field label="Password (at least 8 characters)">
+            <input
+              type="password"
+              required
+              aria-required="true"
+              aria-invalid={error ? true : undefined}
+              aria-describedby={describedBy}
+              minLength={8}
+              className="input"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete={create ? "new-password" : "current-password"}
+            />
           </Field>
-          {error && <p className="text-xs text-orange-300">{error}</p>}
+          {error && (
+            <p id={ERROR_ID} role="alert" className="text-xs text-orange-300">
+              {error}
+            </p>
+          )}
           <Button type="submit" className="w-full" loading={busy}>
             {create ? "Create account" : "Sign in"}
           </Button>
         </form>
-        <button onClick={() => setCreate(!create)} className="mt-4 w-full text-center text-xs text-muted hover:text-ink">
+        <button type="button" onClick={() => setCreate(!create)} className="mt-4 w-full py-1 text-center text-xs text-muted hover:text-ink">
           {create ? "Already have an account? Sign in" : "New to AIRenv? Create an account"}
         </button>
       </motion.div>
-    </div>
+    </main>
   );
 }

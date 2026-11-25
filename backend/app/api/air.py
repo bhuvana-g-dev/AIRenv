@@ -1,10 +1,15 @@
+"""Air-quality data, locations, stations and the intelligence feed."""
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+import time
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from app.api.deps import bundle_or_503, location_param, profile_of
+from app.config import get_settings
 from app.core.http import UpstreamError
-from app.core.security import CurrentUser, get_optional_user
+from app.core.security import CurrentUser, get_current_user, get_optional_user
+from app.services import ambient_intelligence as ambient
 from app.services import environmental_data as env
 from app.services import historical_analytics as ha
 from app.services import intelligence_feed as feed
@@ -15,11 +20,13 @@ router = APIRouter(prefix="/api", tags=["air"])
 
 
 @router.get("/locations/search")
-async def search_locations(q: str = Query(min_length=2, max_length=80)):
+async def search_locations(response: Response, q: str = Query(min_length=2, max_length=80)):
     try:
-        return {"results": [loc.model_dump() for loc in await location_service.search(q)]}
+        results = [loc.model_dump() for loc in await location_service.search(q)]
     except UpstreamError as exc:
         raise HTTPException(503, exc.message) from exc
+    response.headers["Cache-Control"] = "public, max-age=86400"  # place names do not change
+    return {"results": results}
 
 
 @router.get("/locations/reverse")
@@ -47,16 +54,32 @@ async def history(loc: Location = Depends(location_param), demo: bool = False):
             "is_demo": b["snapshot"]["is_demo"]}
 
 
+_last_manual_refresh: dict[str, float] = {}
+
+
 @router.post("/air/refresh")
-async def refresh(loc: Location = Depends(location_param)):
+async def refresh(loc: Location = Depends(location_param), _: CurrentUser = Depends(get_current_user)):
+    """Force a provider refresh. Signed-in only, and at most once per location per cooldown window,
+    so the endpoint cannot be used to hammer upstream providers."""
     from app.scheduler import refresh_location
 
+    cooldown = get_settings().manual_refresh_cooldown_seconds
+    now = time.monotonic()
+    last = _last_manual_refresh.get(loc.id)
+    if last is not None and now - last < cooldown:
+        cached = ambient.cached_bundle(loc.id)
+        if cached:
+            snap = cached["snapshot"]
+            return {"status": snap["status"], "observed_at": snap["observed_at"], "fetched_at": snap["fetched_at"],
+                    "throttled": True, "retry_after_seconds": int(cooldown - (now - last)) + 1}
+    _last_manual_refresh[loc.id] = now
     try:
         snap = await refresh_location(loc)
     except UpstreamError as exc:
         raise HTTPException(503, {"code": "data_unavailable", "message": exc.message, "provider": exc.provider,
                                   "demo_available": True}) from exc
-    return {"status": snap["status"], "observed_at": snap["observed_at"], "fetched_at": snap["fetched_at"]}
+    return {"status": snap["status"], "observed_at": snap["observed_at"], "fetched_at": snap["fetched_at"],
+            "throttled": False}
 
 
 @router.get("/air/stations")

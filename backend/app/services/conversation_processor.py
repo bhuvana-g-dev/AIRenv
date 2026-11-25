@@ -8,7 +8,7 @@ Privacy rules enforced here:
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from statistics import mean
 from typing import Any
 
@@ -32,15 +32,16 @@ class AIExtraction(BaseModel):
     title: str | None = None
 
 
-def _local_now(series: dict[str, Any]) -> datetime:
+def local_now(series: dict[str, Any]) -> datetime:
+    """Current wall-clock time at the series location (naive, local)."""
     off = series.get("utc_offset", "+00:00")
     sign = 1 if off[0] == "+" else -1
     h, m = int(off[1:3]), int(off[4:6])
-    return (datetime.now(timezone.utc) + sign * timedelta(hours=h, minutes=m)).replace(tzinfo=None)
+    return (datetime.now(UTC) + sign * timedelta(hours=h, minutes=m)).replace(tzinfo=None)
 
 
 async def extract_event(text: str, series: dict[str, Any], use_ai: bool = True) -> dict[str, Any]:
-    now = _local_now(series)
+    now = local_now(series)
     clean = ed.redact(text)[:1000]
     result = ed.extract(clean, now)
     # Optional AI refinement only for messages the rules already found relevant and only when time is unclear.

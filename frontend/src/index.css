@@ -11,8 +11,9 @@
   --color-cyan: #55d6e8;
   --color-violet: #a78bfa;
   --color-ink: #f2f7f4;
+  /* Text tokens. On --color-bg / --color-surface-2 / modal glass: muted ≥5.5:1, faint ≥4.7:1 (WCAG AA). */
   --color-muted: #94a89d;
-  --color-faint: #5f7469;
+  --color-faint: #869b90;
 
   --color-aq-good: #35d399;
   --color-aq-satisfactory: #a3e635;
@@ -59,7 +60,11 @@ body {
 *::-webkit-scrollbar { width: 8px; height: 8px; }
 *::-webkit-scrollbar-thumb { background: rgba(124, 231, 180, 0.16); border-radius: 8px; }
 
-:focus-visible { outline: 2px solid var(--color-cyan); outline-offset: 2px; border-radius: 6px; }
+/* Clearly visible keyboard focus on the dark theme (cyan ≈ 11:1 against --color-bg). */
+:focus-visible { outline: 3px solid var(--color-cyan); outline-offset: 2px; }
+/* Programmatically focused containers (main, dialogs, step headings) don't need a ring. */
+[tabindex="-1"]:focus:not(:focus-visible) { outline: none; }
+.leaflet-container:focus-visible, .leaflet-marker-icon:focus-visible { outline: 3px solid var(--color-cyan) !important; outline-offset: 2px; }
 
 @layer components {
   .glass {
@@ -115,7 +120,7 @@ body {
     font-size: 0.9rem;
     transition: border-color 0.2s, box-shadow 0.2s;
   }
-  .input:focus { outline: none; border-color: rgba(85, 214, 232, 0.6); box-shadow: 0 0 0 3px rgba(85, 214, 232, 0.12); }
+  .input:focus { outline: none; border-color: var(--color-cyan); box-shadow: 0 0 0 2px rgba(85, 214, 232, 0.55); }
   .input::placeholder { color: var(--color-faint); }
 }
 
@@ -134,5 +139,7 @@ body {
 .airenv-marker .ring { position: absolute; inset: 0; border-radius: 9999px; animation: var(--animate-pulse-ring); }
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }
+  html { scroll-behavior: auto !important; }
+  *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
+  .skeleton, .animate-aurora, .airenv-marker .ring { animation: none !important; }
 }
