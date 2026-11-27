@@ -1,8 +1,4 @@
-"""Decision intelligence endpoints: the environmental briefing and the AI assistant chat."""
-
 from __future__ import annotations
-
-from typing import Any
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
@@ -17,11 +13,8 @@ router = APIRouter(prefix="/api", tags=["intelligence"])
 
 
 @router.get("/insights/briefing")
-async def briefing(
-    loc: Location = Depends(location_param),
-    demo: bool = False,
-    user: CurrentUser | None = Depends(get_optional_user),
-) -> dict[str, Any]:
+async def briefing(loc: Location = Depends(location_param), demo: bool = False,
+                   user: CurrentUser | None = Depends(get_optional_user)):
     b = await bundle_or_503(loc, allow_demo=demo)
     profile = await profile_of(user.uid if user else None)
     events = await cs.upcoming_events_for_location(loc.id)
@@ -43,14 +36,11 @@ class ChatRequest(BaseModel):
 
 
 @router.post("/assistant/chat")
-async def chat(req: ChatRequest, user: CurrentUser | None = Depends(get_optional_user)) -> dict[str, Any]:
-    loc = (
-        make_location(req.name or "Selected location", req.lat, req.lon)
-        if req.lat is not None and req.lon is not None
-        else location_param(None, None, None)
-    )
+async def chat(req: ChatRequest, user: CurrentUser | None = Depends(get_optional_user)):
+    loc = (make_location(req.name or "Selected location", req.lat, req.lon) if req.lat is not None
+           and req.lon is not None else location_param(None, None, None))
     b = await bundle_or_503(loc, allow_demo=req.demo)
     profile = await profile_of(user.uid if user else None)
     events = await cs.upcoming_events_for_location(loc.id)
-    history = [t.model_dump() for t in req.history]
-    return await assistant_service.answer(req.question, history, b["snapshot"], b["series"], profile, events)
+    return await assistant_service.answer(req.question, [t.model_dump() for t in req.history], b["snapshot"],
+                                          b["series"], profile, events)

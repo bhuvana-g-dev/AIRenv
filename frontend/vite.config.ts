@@ -22,13 +22,7 @@ export default defineConfig({
         manualChunks(id) {
           if (!id.includes("node_modules")) return undefined;
           if (vendor(id, "react|react-dom|scheduler|react-router|react-router-dom")) return "react";
-          if (
-            vendor(
-              id,
-              "recharts|recharts-scale|react-smooth|victory-vendor|d3-[^\\\\/]+|decimal\\.js-light|lodash|eventemitter3|fast-equals",
-            )
-          )
-            return "charts";
+          if (vendor(id, "recharts|recharts-scale|react-smooth|victory-vendor|d3-[^\\\\/]+|decimal\\.js-light|lodash|eventemitter3|fast-equals")) return "charts";
           if (vendor(id, "leaflet|react-leaflet|@react-leaflet")) return "map";
           if (vendor(id, "motion|framer-motion|motion-dom|motion-utils")) return "motion";
           return undefined;

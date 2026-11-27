@@ -1,5 +1,4 @@
 """Unit tests for the Gemini wrapper, the shared HTTP helper and the in-process event bus (no network)."""
-
 import asyncio
 import json
 from datetime import datetime
@@ -37,10 +36,8 @@ def test_gemini_schema_inlines_refs_and_drops_unsupported_keys():
     for banned in ("$ref", "$defs", "title", "default", "maxLength", "pattern"):
         assert banned not in text
     props = out["properties"]
-    assert props["items"] == {
-        "items": {"properties": {"name": {"type": "string"}}, "required": ["name"], "type": "object"},
-        "type": "array",
-    }
+    assert props["items"] == {"items": {"properties": {"name": {"type": "string"}}, "required": ["name"],
+                                        "type": "object"}, "type": "array"}
     assert props["count"] == {"type": "integer"}
     assert props["code"] == {"type": "string"}
     assert props["level"]["enum"] == ["low", "high"]
@@ -77,20 +74,17 @@ def test_numbers_collects_nested_values():
     assert ai_engine._numbers({"a": [1.5, {"b": 200}], "c": "1,200 kg"}) == {1.5, 200.0, 1200.0}
 
 
-@pytest.mark.parametrize(
-    "text, allowed, bad",
-    [
-        ("PM2.5 near 148", {146.7}, []),  # within 2 %
-        ("PM2.5 near 150", {146.7}, ["150"]),  # 3.3 away > 2 % of 146.7
-        ("about 51 today", {50.0}, []),  # ±1 absolute tolerance for small values
-        ("about 51.5 today", {50.0}, ["51.5"]),
-        ("about 25 kids", {10.0}, ["25"]),  # integers above 24 must be supported
-        ("at 7 PM, 3 groups, 24 hours", set(), []),  # small integers are always allowed
-        ("ratio 3.5", set(), ["3.5"]),  # small non-integers are not
-        ("emissions 1,200 kg", {1200.0}, []),
-        ("PM2.5 is high", set(), []),  # the '2.5' inside a label is not a number
-    ],
-)
+@pytest.mark.parametrize("text, allowed, bad", [
+    ("PM2.5 near 148", {146.7}, []),          # within 2 %
+    ("PM2.5 near 150", {146.7}, ["150"]),     # 3.3 away > 2 % of 146.7
+    ("about 51 today", {50.0}, []),          # ±1 absolute tolerance for small values
+    ("about 51.5 today", {50.0}, ["51.5"]),
+    ("about 25 kids", {10.0}, ["25"]),       # integers above 24 must be supported
+    ("at 7 PM, 3 groups, 24 hours", set(), []),  # small integers are always allowed
+    ("ratio 3.5", set(), ["3.5"]),            # small non-integers are not
+    ("emissions 1,200 kg", {1200.0}, []),
+    ("PM2.5 is high", set(), []),             # the '2.5' inside a label is not a number
+])
 def test_unsupported_numbers_tolerance(text, allowed, bad):
     assert ai_engine.unsupported_numbers(text, allowed) == bad
 
@@ -168,16 +162,13 @@ def test_generate_json_accepts_valid_grounded_output(monkeypatch, gemini_key):
     assert "$defs" not in json.dumps(body["generationConfig"]["responseSchema"])
 
 
-@pytest.mark.parametrize(
-    "fake",
-    [
-        FakeClient(_gemini_response('{"summary": 5}')),  # schema mismatch
-        FakeClient(_gemini_response("not json at all")),  # invalid JSON
-        FakeClient(_gemini_response("", status=500)),  # non-200
-        FakeClient(httpx.Response(200, json={"candidates": []})),  # missing candidate
-        FakeClient(exc=httpx.ConnectError("offline")),  # network error
-    ],
-)
+@pytest.mark.parametrize("fake", [
+    FakeClient(_gemini_response('{"summary": 5}')),                    # schema mismatch
+    FakeClient(_gemini_response("not json at all")),                   # invalid JSON
+    FakeClient(_gemini_response("", status=500)),                      # non-200
+    FakeClient(httpx.Response(200, json={"candidates": []})),          # missing candidate
+    FakeClient(exc=httpx.ConnectError("offline")),                     # network error
+])
 def test_generate_json_failures_return_none(monkeypatch, gemini_key, fake):
     _install_client(monkeypatch, fake)
     assert asyncio.run(ai_engine.generate_json("Explain", CONTEXT, Answer)) is None
@@ -185,7 +176,8 @@ def test_generate_json_failures_return_none(monkeypatch, gemini_key, fake):
 
 
 def test_generate_json_rejects_invented_numbers(monkeypatch, gemini_key):
-    _install_client(monkeypatch, FakeClient(_gemini_response('{"summary": "This cuts risk by 73%", "pm": 146.7}')))
+    _install_client(monkeypatch, FakeClient(_gemini_response(
+        '{"summary": "This cuts risk by 73%", "pm": 146.7}')))
     assert asyncio.run(ai_engine.generate_json("Explain", CONTEXT, Answer)) is None
 
 
@@ -248,14 +240,11 @@ def test_get_json_gives_up_after_retries(monkeypatch):
     assert sleeps == [0.6, 1.2]
 
 
-@pytest.mark.parametrize(
-    "status, message",
-    [
-        (401, "authorization failed (HTTP 401)"),
-        (403, "authorization failed (HTTP 403)"),
-        (429, "rate limited by provider (HTTP 429)"),
-    ],
-)
+@pytest.mark.parametrize("status, message", [
+    (401, "authorization failed (HTTP 401)"),
+    (403, "authorization failed (HTTP 403)"),
+    (429, "rate limited by provider (HTTP 429)"),
+])
 def test_get_json_does_not_retry_auth_or_rate_limit(monkeypatch, status, message):
     result, requests, sleeps = _get_json(monkeypatch, lambda r, n: httpx.Response(status))
     assert isinstance(result, http.UpstreamError)
@@ -344,5 +333,5 @@ def test_bus_full_queue_drops_oldest():
         bus.publish("t", "e", i)
     assert q.qsize() == 100
     messages = [q.get_nowait() for _ in range(100)]
-    assert messages[0] == "event: e\ndata: 1\n\n"  # message 0 was dropped
+    assert messages[0] == "event: e\ndata: 1\n\n"   # message 0 was dropped
     assert messages[-1] == "event: e\ndata: 100\n\n"

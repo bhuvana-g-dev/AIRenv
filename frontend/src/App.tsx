@@ -7,15 +7,15 @@ import { titleForPath, useDocumentTitle } from "./lib/useDocumentTitle";
 
 // The app opens first; the product overview (former landing page) lives at /about and is
 // linked from the "How to use" guide in the app header.
-const Landing = lazy(() => import("./pages/landing/LandingPage"));
+const Landing = lazy(() => import("./pages/Landing"));
 const AppShell = lazy(() => import("./components/AppShell").then((m) => ({ default: m.AppShell })));
-const Dashboard = lazy(() => import("./pages/dashboard/DashboardPage"));
-const AirMap = lazy(() => import("./pages/airmap/AirMapPage"));
-const Assistant = lazy(() => import("./pages/assistant/AssistantPage"));
-const Community = lazy(() => import("./pages/community/CommunityPage"));
-const Impact = lazy(() => import("./pages/impact/ImpactPage"));
-const Alerts = lazy(() => import("./pages/alerts/AlertsPage"));
-const SettingsPage = lazy(() => import("./pages/settings/SettingsPage"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const AirMap = lazy(() => import("./pages/AirMap"));
+const Assistant = lazy(() => import("./pages/Assistant"));
+const Community = lazy(() => import("./pages/Community"));
+const Impact = lazy(() => import("./pages/Impact"));
+const Alerts = lazy(() => import("./pages/Alerts"));
+const SettingsPage = lazy(() => import("./pages/Settings"));
 const SignIn = lazy(() => import("./pages/SignIn"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 
@@ -63,14 +63,7 @@ export default function App() {
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/app" replace />} />
-      <Route
-        path="/about"
-        element={
-          <Suspense fallback={<FullScreenFallback label="Loading…" />}>
-            <Landing />
-          </Suspense>
-        }
-      />
+      <Route path="/about" element={<Suspense fallback={<FullScreenFallback label="Loading…" />}><Landing /></Suspense>} />
       <Route
         path="/app"
         element={

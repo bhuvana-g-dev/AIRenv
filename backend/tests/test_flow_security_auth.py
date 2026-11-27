@@ -1,5 +1,4 @@
 """Firebase authentication path and role checks, with firebase_admin replaced by in-memory fakes."""
-
 import asyncio
 import sys
 import types
@@ -81,9 +80,8 @@ def test_invalid_token_is_401(firebase):
 def test_valid_token_creates_member_profile(firebase):
     firebase.tokens["good"] = {"uid": "u1", "email": "Asha@Example.COM", "name": "Asha"}
     user = _user("bearer   good  ")
-    assert user == CurrentUser(
-        uid="u1", email="asha@example.com", display_name="Asha", role="member", auth_mode="firebase"
-    )
+    assert user == CurrentUser(uid="u1", email="asha@example.com", display_name="Asha", role="member",
+                               auth_mode="firebase")
     profile = asyncio.run(get_store().get("users", "u1"))
     assert profile["email"] == "asha@example.com" and profile["role"] == "member"
     assert profile["display_name"] == "Asha" and profile["onboarded"] is False
@@ -128,10 +126,8 @@ def test_uninitialised_firebase_without_credentials_is_503(monkeypatch):
     assert fb.verified == []
 
 
-@pytest.mark.parametrize(
-    "raw, expected",
-    [('{"type": "service_account"}', {"type": "service_account"}), ("/secrets/sa.json", "/secrets/sa.json")],
-)
+@pytest.mark.parametrize("raw, expected", [('{"type": "service_account"}', {"type": "service_account"}),
+                                           ("/secrets/sa.json", "/secrets/sa.json")])
 def test_firebase_is_initialised_from_json_or_path(monkeypatch, raw, expected):
     monkeypatch.setattr(get_settings(), "auth_mode", "firebase")
     monkeypatch.setattr(get_settings(), "firebase_credentials", raw)
@@ -158,17 +154,13 @@ def test_local_mode_returns_local_admin(monkeypatch):
 
 # ----------------------------------------------------------------------------- roles
 
-
-@pytest.mark.parametrize(
-    "role, required, allowed",
-    [
-        ("member", ("member",), True),
-        ("member", ("community_admin",), False),
-        ("community_admin", ("community_admin", "admin"), True),
-        ("admin", ("community_admin",), True),
-        ("member", (), False),
-    ],
-)
+@pytest.mark.parametrize("role, required, allowed", [
+    ("member", ("member",), True),
+    ("member", ("community_admin",), False),
+    ("community_admin", ("community_admin", "admin"), True),
+    ("admin", ("community_admin",), True),
+    ("member", (), False),
+])
 def test_has_role(role, required, allowed):
     assert CurrentUser(uid="x", role=role).has_role(*required) is allowed
 
@@ -193,7 +185,6 @@ def test_new_token_is_url_safe_and_unique():
 
 
 # ----------------------------------------------------------------------------- through the API
-
 
 def test_api_requires_bearer_token_in_firebase_mode(firebase):
     firebase.tokens["good"] = {"uid": "api-user", "email": "api@example.com", "name": "API"}

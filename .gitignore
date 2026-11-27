@@ -7,11 +7,6 @@ venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-htmlcov/
-coverage/
 
 # Build output
 dist/
@@ -25,14 +20,7 @@ build/
 # Logs and local data
 *.log
 *.db
-*.db-shm
-*.db-wal
 *.sqlite3
-backend/data/
-
-# Demo-video working files (kept locally, not part of the code)
-reel_work/
-*.mp4
 
 # Local tooling
 .kiro/

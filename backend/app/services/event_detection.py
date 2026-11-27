@@ -2,94 +2,31 @@
 
 Only structured fields are returned; the original text is never stored.
 """
-
 from __future__ import annotations
 
 import re
-from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any
 
-DAYS_PER_WEEK = 7
-TWO_DIGIT_YEAR_LIMIT = 100  # "5/12/26" means 2026
-CENTURY = 2000
-LAST_HOUR = 23
-AMBIGUOUS_AFTERNOON_HOURS = range(1, 7)  # "at 1".."at 6" without am/pm
-OUTDOOR_BY_DEFAULT = ("sports", "practice", "run", "walk", "excursion", "assembly")
-TWO_HOUR_ACTIVITIES = ("sports", "practice", "excursion", "function")
-
 ACTIVITY_PATTERNS: list[tuple[str, str, str, list[str]]] = [
     # (activity_type, intensity, label, keywords)
-    (
-        "sports",
-        "high",
-        "Outdoor sports",
-        [
-            r"sports?",
-            r"cricket",
-            r"football",
-            r"hockey",
-            r"athletics",
-            r"kabaddi",
-            r"basketball",
-            r"badminton",
-            r"match",
-            r"tournament",
-            r"\bpe\b",
-            r"physical education",
-            r"khel",
-        ],
-    ),
+    ("sports", "high", "Outdoor sports", [r"sports?", r"cricket", r"football", r"hockey", r"athletics", r"kabaddi",
+                                          r"basketball", r"badminton", r"match", r"tournament", r"\bpe\b",
+                                          r"physical education", r"khel"]),
     ("practice", "high", "Sports practice", [r"practice", r"training", r"drill", r"coaching"]),
     ("run", "high", "Run or marathon", [r"marathon", r"\brun\b", r"running", r"jog", r"cyclothon", r"walkathon"]),
     ("excursion", "moderate", "Trip or excursion", [r"picnic", r"excursion", r"field trip", r"\btrip\b", r"outing"]),
     ("walk", "moderate", "Group walk", [r"\bwalk\b", r"morning walk", r"nature walk", r"prabhat pheri"]),
     ("assembly", "light", "Outdoor assembly", [r"assembly", r"parade", r"march past", r"rally", r"prayer"]),
-    (
-        "function",
-        "light",
-        "Community function",
-        [
-            r"function",
-            r"celebration",
-            r"festival",
-            r"party",
-            r"mela",
-            r"get[- ]together",
-            r"event",
-            r"puja",
-            r"wedding",
-            r"program+e?",
-        ],
-    ),
+    ("function", "light", "Community function", [r"function", r"celebration", r"festival", r"party", r"mela",
+                                                 r"get[- ]together", r"event", r"puja", r"wedding", r"program+e?"]),
 ]
-OUTDOOR_HINTS = [
-    r"outdoor",
-    r"outside",
-    r"ground",
-    r"field",
-    r"park",
-    r"playground",
-    r"lawn",
-    r"terrace",
-    r"open air",
-    r"maidan",
-    r"court",
-    r"stadium",
-    r"garden",
-    r"courtyard",
-]
+OUTDOOR_HINTS = [r"outdoor", r"outside", r"ground", r"field", r"park", r"playground", r"lawn", r"terrace",
+                 r"open air", r"maidan", r"court", r"stadium", r"garden", r"courtyard"]
 INDOOR_HINTS = [r"indoor", r"\bhall\b", r"auditorium", r"classroom", r"clubhouse", r"inside"]
-BURNING = [
-    r"\bburn",
-    r"bonfire",
-    r"set (?:it )?on fire",
-    r"\bfire\b.*(?:waste|garbage|leaves|kachra|kooda)",
-    r"(?:waste|garbage|leaves|kachra|kooda|trash).*\b(?:burn|fire|jala)",
-    r"\bjala(?:o|na|denge|dete)",
-    r"open burning",
-    r"stubble",
-]
+BURNING = [r"\bburn", r"bonfire", r"set (?:it )?on fire", r"\bfire\b.*(?:waste|garbage|leaves|kachra|kooda)",
+           r"(?:waste|garbage|leaves|kachra|kooda|trash).*\b(?:burn|fire|jala)", r"\bjala(?:o|na|denge|dete)",
+           r"open burning", r"stubble"]
 TRANSPORT = [r"carpool", r"car pool", r"ride share", r"school bus", r"\bpick ?up\b", r"\bdrop off\b", r"\bvan\b"]
 
 WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
@@ -113,113 +50,52 @@ def parse_time(text: str) -> tuple[str | None, str]:
     m = re.search(r"\bat\s+(\d{1,2})\b(?!\s*(?:km|kg|%|th|st|nd|rd))", text)
     if m:
         h = int(m.group(1))
-        if h in AMBIGUOUS_AFTERNOON_HOURS:
+        if 1 <= h <= 6:
             h += 12  # "at 4" in an activity context almost always means afternoon
-        if h <= LAST_HOUR:
+        if h <= 23:
             return f"{h:02d}:00", "approximate"
     # Whole-word matches, longest phrases first ("afternoon" contains "noon").
-    for word, hhmm in (
-        ("early morning", "06:30"),
-        ("afternoon", "15:00"),
-        ("morning", "08:00"),
-        ("noon", "12:00"),
-        ("evening", "17:30"),
-        ("tonight", "20:00"),
-        ("night", "20:00"),
-    ):
+    for word, hhmm in (("early morning", "06:30"), ("afternoon", "15:00"), ("morning", "08:00"),
+                       ("noon", "12:00"), ("evening", "17:30"), ("tonight", "20:00"), ("night", "20:00")):
         if re.search(rf"\b{word}\b", text):
             return hhmm, "part_of_day"
     return None, "none"
 
 
-DateMatch = tuple[str, str]  # (YYYY-MM-DD, precision)
-
-
-def _day(now: datetime, days: int = 0) -> str:
-    return (now + timedelta(days=days)).strftime("%Y-%m-%d")
-
-
-def _relative_date(text: str, now: datetime) -> DateMatch | None:
+def parse_date(text: str, now: datetime) -> tuple[str | None, str]:
     if "day after tomorrow" in text or "parso" in text:
-        return _day(now, 2), "relative"
+        return (now + timedelta(days=2)).strftime("%Y-%m-%d"), "relative"
     if "tomorrow" in text or "kal " in text or text.endswith("kal"):
-        return _day(now, 1), "relative"
+        return (now + timedelta(days=1)).strftime("%Y-%m-%d"), "relative"
     if "today" in text or "tonight" in text or "this evening" in text or "aaj" in text:
-        return _day(now), "relative"
-    return None
-
-
-def _weekday_date(text: str, now: datetime) -> DateMatch | None:
-    """The next occurrence of a named weekday ("this <day>" may mean today)."""
+        return now.strftime("%Y-%m-%d"), "relative"
     for i, wd in enumerate(WEEKDAYS):
         if re.search(rf"\b{wd}\b", text):
-            delta = (i - now.weekday()) % DAYS_PER_WEEK or DAYS_PER_WEEK
-            if f"this {wd}" in text and delta == DAYS_PER_WEEK:
+            delta = (i - now.weekday()) % 7 or 7
+            if f"this {wd}" in text and delta == 7:
                 delta = 0
-            return _day(now, delta), "weekday"
-    return None
-
-
-def _numeric_date(text: str, now: datetime) -> DateMatch | None:
-    """dd/mm, dd-mm-yy or dd/mm/yyyy."""
+            return (now + timedelta(days=delta)).strftime("%Y-%m-%d"), "weekday"
     m = re.search(r"\b(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?\b", text)
-    if not m:
-        return None
-    d, mo = int(m.group(1)), int(m.group(2))
-    y = int(m.group(3)) if m.group(3) else now.year
-    if y < TWO_DIGIT_YEAR_LIMIT:
-        y += CENTURY
-    try:
-        return datetime(y, mo, d).strftime("%Y-%m-%d"), "explicit"
-    except ValueError:
-        return None
-
-
-def _ordinal_date(text: str, now: datetime) -> DateMatch | None:
-    """Ordinal day ("on the 5th"): this month, or next month if that day has passed."""
+    if m:
+        d, mo = int(m.group(1)), int(m.group(2))
+        y = int(m.group(3)) if m.group(3) else now.year
+        if y < 100:
+            y += 2000
+        try:
+            return datetime(y, mo, d).strftime("%Y-%m-%d"), "explicit"
+        except ValueError:
+            pass
     m = re.search(r"\bon\s+(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)\b", text)
-    if not m:
-        return None
-    d = int(m.group(1))
-    try:
-        cand = now.replace(day=d)
-        if cand.date() < now.date():
-            cand = (now.replace(day=1) + timedelta(days=32)).replace(day=d)
-    except ValueError:
-        return None
-    return cand.strftime("%Y-%m-%d"), "explicit"
-
-
-# Tried in order; the first parser that recognises a date wins.
-DATE_PARSERS: tuple[Callable[[str, datetime], DateMatch | None], ...] = (
-    _relative_date,
-    _weekday_date,
-    _numeric_date,
-    _ordinal_date,
-)
-
-
-def parse_date(text: str, now: datetime) -> tuple[str | None, str]:
-    for parser in DATE_PARSERS:
-        if (found := parser(text, now)) is not None:
-            return found
+    if m:
+        d = int(m.group(1))
+        try:
+            cand = now.replace(day=d)
+            if cand.date() < now.date():
+                cand = (now.replace(day=1) + timedelta(days=32)).replace(day=d)
+            return cand.strftime("%Y-%m-%d"), "explicit"
+        except ValueError:
+            pass
     return None, "none"
-
-
-def _match_activity(text: str) -> tuple[str, str, str] | None:
-    """(activity_type, intensity, label) of the first matching activity pattern."""
-    for a_type, intensity, label, kws in ACTIVITY_PATTERNS:
-        if _any(kws, text):
-            return a_type, intensity, label
-    return None
-
-
-def _is_outdoor(text: str, activity_type: str) -> bool | None:
-    if _any(OUTDOOR_HINTS, text):
-        return True
-    if _any(INDOOR_HINTS, text):
-        return False
-    return True if activity_type in OUTDOOR_BY_DEFAULT else None
 
 
 def extract(text: str, now: datetime) -> dict[str, Any]:
@@ -227,36 +103,34 @@ def extract(text: str, now: datetime) -> dict[str, Any]:
     t = " ".join(text.lower().split())
     result: dict[str, Any] = {"relevant": False, "kind": None}
     if _any(BURNING, t):
+        result.update({"relevant": True, "kind": "concern", "concern_type": "open_burning",
+                       "title": "Open burning discussed"})
         date, _ = parse_date(t, now)
-        title = "Open burning discussed"
-        result.update({"relevant": True, "kind": "concern", "concern_type": "open_burning", "title": title})
-        result["date"] = date or _day(now)
+        result["date"] = date or now.strftime("%Y-%m-%d")
         return result
-    activity = _match_activity(t)
+    activity = None
+    for a_type, intensity, label, kws in ACTIVITY_PATTERNS:
+        if _any(kws, t):
+            activity = (a_type, intensity, label)
+            break
     if activity is None:
         if _any(TRANSPORT, t):
             result.update({"relevant": True, "kind": "transport", "title": "Transport arrangement"})
         return result
-    a_type, intensity, label = activity
     date, date_prec = parse_date(t, now)
     hhmm, time_prec = parse_time(t)
     if date is None and hhmm is None:
         return result  # mentions an activity but no schedule: not actionable
-    result.update(
-        {
-            "relevant": True,
-            "kind": "activity",
-            "activity_type": a_type,
-            "intensity": intensity,
-            "title": label,
-            "outdoor": _is_outdoor(t, a_type),
-            "date": date or _day(now),
-            "date_precision": date_prec if date else "assumed_today",
-            "time": hhmm,
-            "time_precision": time_prec,
-            "duration_hours": 2 if a_type in TWO_HOUR_ACTIVITIES else 1,
-        }
-    )
+    outdoor: bool | None = True if _any(OUTDOOR_HINTS, t) else False if _any(INDOOR_HINTS, t) else None
+    if outdoor is None and activity[0] in ("sports", "practice", "run", "walk", "excursion", "assembly"):
+        outdoor = True
+    result.update({
+        "relevant": True, "kind": "activity", "activity_type": activity[0], "intensity": activity[1],
+        "title": activity[2], "outdoor": outdoor,
+        "date": date or now.strftime("%Y-%m-%d"), "date_precision": date_prec if date else "assumed_today",
+        "time": hhmm, "time_precision": time_prec,
+        "duration_hours": 2 if activity[0] in ("sports", "practice", "excursion", "function") else 1,
+    })
     return result
 
 

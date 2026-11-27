@@ -50,9 +50,7 @@ describe("chart summaries for screen readers", () => {
       { date: "2026-01-09", pm2_5_mean: 120 },
       { date: "2026-01-10", pm2_5_mean: 60 },
     ]);
-    expect(daily).toBe(
-      "Daily mean PM2.5 for 3 days from 2026-01-08 to 2026-01-10. Highest 120 µg/m³ on 2026-01-09; lowest 60 µg/m³ on 2026-01-10.",
-    );
+    expect(daily).toBe("Daily mean PM2.5 for 3 days from 2026-01-08 to 2026-01-10. Highest 120 µg/m³ on 2026-01-09; lowest 60 µg/m³ on 2026-01-10.");
     const hours = hourProfileSummary(
       [
         { hour: 6, pm2_5_mean: 140 },
@@ -65,15 +63,6 @@ describe("chart summaries for screen readers", () => {
   });
 
   it("lists generic series values", () => {
-    expect(
-      seriesSummary(
-        "Inhaled",
-        [
-          { label: "Planned", value: 120 },
-          { label: "Best", value: 40 },
-        ],
-        "µg",
-      ),
-    ).toBe("Inhaled: Planned 120 µg; Best 40 µg.");
+    expect(seriesSummary("Inhaled", [{ label: "Planned", value: 120 }, { label: "Best", value: 40 }], "µg")).toBe("Inhaled: Planned 120 µg; Best 40 µg.");
   });
 });

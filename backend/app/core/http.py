@@ -1,10 +1,8 @@
 """Shared HTTP client with timeouts and a single retry for transient failures."""
-
 from __future__ import annotations
 
 import asyncio
 import logging
-from http import HTTPStatus
 from typing import Any
 
 import httpx
@@ -13,7 +11,6 @@ from app.config import get_settings
 
 log = logging.getLogger("airenv.http")
 
-RETRY_BACKOFF_SECONDS = 0.6  # multiplied by the attempt number
 _client: httpx.AsyncClient | None = None
 
 
@@ -63,28 +60,17 @@ async def close_client() -> None:
         _client = None
 
 
-def _check_status(provider: str, resp: httpx.Response) -> None:
-    """Auth and rate-limit failures are not retried; other HTTP errors raise httpx.HTTPStatusError."""
-    if resp.status_code in (HTTPStatus.UNAUTHORIZED, HTTPStatus.FORBIDDEN):
-        raise UpstreamError(provider, f"authorization failed (HTTP {resp.status_code})")
-    if resp.status_code == HTTPStatus.TOO_MANY_REQUESTS:
-        raise UpstreamError(provider, "rate limited by provider (HTTP 429)")
-    resp.raise_for_status()
-
-
-async def get_json(
-    provider: str,
-    url: str,
-    *,
-    params: dict[str, Any] | None = None,
-    headers: dict[str, str] | None = None,
-    retries: int = 1,
-) -> Any:
+async def get_json(provider: str, url: str, *, params: dict[str, Any] | None = None,
+                   headers: dict[str, str] | None = None, retries: int = 1) -> Any:
     last: Exception | None = None
     for attempt in range(retries + 1):
         try:
             resp = await client().get(url, params=params, headers=headers)
-            _check_status(provider, resp)
+            if resp.status_code in (401, 403):
+                raise UpstreamError(provider, f"authorization failed (HTTP {resp.status_code})")
+            if resp.status_code == 429:
+                raise UpstreamError(provider, "rate limited by provider (HTTP 429)")
+            resp.raise_for_status()
             return resp.json()
         except UpstreamError:
             raise
@@ -95,5 +81,5 @@ async def get_json(
             last = exc
             log.warning("%s request failed: %s", provider, describe_error(exc))
         if attempt < retries:
-            await asyncio.sleep(RETRY_BACKOFF_SECONDS * (attempt + 1))
+            await asyncio.sleep(0.6 * (attempt + 1))
     raise UpstreamError(provider, describe_error(last) if last else "unknown error")

@@ -1,5 +1,4 @@
 """Assistant intents, recommendation rules and the briefing (rule fallback, mocked AI path and cache)."""
-
 import asyncio
 import copy
 
@@ -50,21 +49,17 @@ def _ai(monkeypatch, result):
 
 # ----------------------------------------------------------------------------- assistant: intents
 
-
-@pytest.mark.parametrize(
-    "question, intent",
-    [
-        ("Why is the air so bad today?", "why_poor"),
-        ("What is the source of this smog?", "why_poor"),
-        ("What's the best time for a jog?", "best_time"),
-        ("Is it safe for kids to play outside?", "safe_outside"),
-        ("Should I close the window at home?", "indoor"),
-        ("Tips for a wedding party", "event"),
-        ("How can our society cut waste?", "reduce"),
-        ("Will it be worse tomorrow?", "forecast"),
-        ("Hello there", "summary"),
-    ],
-)
+@pytest.mark.parametrize("question, intent", [
+    ("Why is the air so bad today?", "why_poor"),
+    ("What is the source of this smog?", "why_poor"),
+    ("What's the best time for a jog?", "best_time"),
+    ("Is it safe for kids to play outside?", "safe_outside"),
+    ("Should I close the window at home?", "indoor"),
+    ("Tips for a wedding party", "event"),
+    ("How can our society cut waste?", "reduce"),
+    ("Will it be worse tomorrow?", "forecast"),
+    ("Hello there", "summary"),
+])
 def test_classify(question, intent):
     assert assistant_service.classify(question) == intent
 
@@ -79,10 +74,8 @@ def test_head_line_and_data_refs(data):
     out = _ask("Hello there", snapshot, series)
     pm = snapshot["pollutants"]["pm2_5"]["value"]
     cat = snapshot["aqi"]["category"]
-    assert out["answer"] == (
-        f"In **Test City**, the estimated NAQI is **{snapshot['aqi']['value']} "
-        f"({cat['label']})** with PM2.5 at **{pm} µg/m³** (as of 10:00 local). {cat['health']}"
-    )
+    assert out["answer"] == (f"In **Test City**, the estimated NAQI is **{snapshot['aqi']['value']} "
+                             f"({cat['label']})** with PM2.5 at **{pm} µg/m³** (as of 10:00 local). {cat['health']}")
     recs = re_engine.build_recommendations(snapshot, series, None, [])
     assert [c["id"] for c in out["cards"]] == [r["id"] for r in recs[:2]]
     assert out["intent"] == "summary" and out["generated_by"] == "rules" and out["is_demo"] is False
@@ -97,13 +90,8 @@ def test_why_poor_with_trapping_weather_and_rising_trend(data):
     snapshot, series = data
     snapshot["weather"] = {"wind_speed_kmh": 3, "boundary_layer_m": 200}
     snapshot["analysis"]["dispersion"] = pa.dispersion(3, 200)
-    snapshot["analysis"]["trend_pm2_5"] = {
-        "direction": "rising",
-        "change_pct": 30,
-        "window_hours": 3,
-        "recent_mean": 150,
-        "prior_mean": 115,
-    }
+    snapshot["analysis"]["trend_pm2_5"] = {"direction": "rising", "change_pct": 30, "window_hours": 3,
+                                           "recent_mean": 150, "prior_mean": 115}
     out = _ask("Why is it so polluted?", snapshot, series)
     a = out["answer"]
     assert f"The main pollutant is **{snapshot['aqi']['dominant_label']}**." in a
@@ -122,17 +110,11 @@ def test_why_poor_with_good_dispersion(data):
     assert "has been" not in a
 
 
-@pytest.mark.parametrize(
-    "severity, advice",
-    [
-        (4, "Strenuous outdoor play is not advisable right now, especially for children."),
-        (
-            2,
-            "Light outdoor activity is generally fine; keep strenuous exercise short, especially for sensitive people.",
-        ),
-        (0, "Conditions are suitable for outdoor activity."),
-    ],
-)
+@pytest.mark.parametrize("severity, advice", [
+    (4, "Strenuous outdoor play is not advisable right now, especially for children."),
+    (2, "Light outdoor activity is generally fine; keep strenuous exercise short, especially for sensitive people."),
+    (0, "Conditions are suitable for outdoor activity."),
+])
 def test_safe_outside_advice_by_severity(data, severity, advice):
     snapshot, series = data
     _set_category(snapshot, severity)
@@ -196,35 +178,26 @@ def test_uncertainty_for_sample_data(data):
 
 def test_upcoming_events_feed_the_context(data):
     snapshot, series = data
-    events = [
-        {"title": f"Event {i}", "date": "2026-11-20", "time": "09:00", "risk": {"summary": "Risky"}} for i in range(7)
-    ]
+    events = [{"title": f"Event {i}", "date": "2026-11-20", "time": "09:00", "risk": {"summary": "Risky"}}
+              for i in range(7)]
     recs = re_engine.build_recommendations(snapshot, series, None, events)
     ctx = assistant_service.build_context(snapshot, series, recs, events)
     assert len(ctx["upcoming_community_events"]) == 5
-    assert ctx["upcoming_community_events"][0] == {
-        "title": "Event 0",
-        "date": "2026-11-20",
-        "time": "09:00",
-        "risk": "Risky",
-    }
+    assert ctx["upcoming_community_events"][0] == {"title": "Event 0", "date": "2026-11-20", "time": "09:00",
+                                                   "risk": "Risky"}
     assert len(ctx["forecast_every_3h"]) == 12 and len(ctx["cleanest_hours_next_36h"]) == 3
 
 
 # ----------------------------------------------------------------------------- assistant: AI path
 
-
 def test_ai_answer_is_used_when_valid(data, monkeypatch):
     snapshot, series = data
-    ai = AssistantAnswer(
-        answer="Keep windows closed today.",
-        recommendation_ids=["protection", "made_up"],
-        uncertainty="Model estimate.",
-        follow_ups=["a", "b", "c", "d"],
-    )
+    ai = AssistantAnswer(answer="Keep windows closed today.", recommendation_ids=["protection", "made_up"],
+                         uncertainty="Model estimate.", follow_ups=["a", "b", "c", "d"])
     calls = _ai(monkeypatch, ai)
     history = [{"role": "user", "content": "Hi"}]
-    out = _ask("Is it safe?", snapshot, series, profile={"language": "hi", "community_type": "school"}, history=history)
+    out = _ask("Is it safe?", snapshot, series, profile={"language": "hi", "community_type": "school"},
+               history=history)
     assert out["generated_by"] == "gemini" and out["answer"] == "Keep windows closed today."
     assert [c["id"] for c in out["cards"]] == ["protection"]
     assert out["follow_ups"] == ["a", "b", "c"] and out["uncertainty"] == "Model estimate."
@@ -251,7 +224,6 @@ def test_ai_not_called_for_demo_data(data, monkeypatch):
 
 # ----------------------------------------------------------------------------- recommendations
 
-
 def _ids(recs):
     return [r["id"] for r in recs]
 
@@ -261,9 +233,8 @@ def test_sensitive_family_members_get_extra_care(data):
     profile = {"family_context": {"children": True, "older_adults": True, "pregnancy": False}}
     recs = re_engine.build_recommendations(snapshot, series, profile)
     rec = next(r for r in recs if r["id"] == "sensitive_groups")
-    assert (
-        rec["why_it_matters"] == "Your household includes children, older adults, who are more affected at this level."
-    )
+    assert rec["why_it_matters"] == "Your household includes children, older adults, who are more affected at " \
+                                    "this level."
     assert rec["audience"] == "sensitive_groups" and rec["priority"] == 2
 
 
@@ -283,13 +254,11 @@ def test_school_recommendation_wording_by_severity(data):
     school = {"community_type": "school"}
     recs = re_engine.build_recommendations(snapshot, series, school)
     assert next(r for r in recs if r["id"] == "school_activity")["action"].startswith(
-        "Hold PE and sports indoors today."
-    )
+        "Hold PE and sports indoors today.")
     _set_category(snapshot, 2)
     recs = re_engine.build_recommendations(snapshot, series, school)
     assert next(r for r in recs if r["id"] == "school_activity")["action"].startswith(
-        "Prefer lighter outdoor activity and keep strenuous sports short."
-    )
+        "Prefer lighter outdoor activity and keep strenuous sports short.")
     assert "waste" not in _ids(recs) and "indoor_air" not in _ids(recs)
 
 
@@ -318,18 +287,9 @@ def test_poor_dispersion_is_explained_in_indoor_advice(data):
 def test_community_events_at_risk_become_recommendations(data):
     snapshot, series = data
     events = [
-        {
-            "id": "e1",
-            "title": "Sports day",
-            "risk": {
-                "level": "high",
-                "summary": "Very poor at 21:00",
-                "action": "Move indoors",
-                "alternative": "Try 15:00",
-                "benefit": "Less exposure",
-                "confidence": "low",
-            },
-        },
+        {"id": "e1", "title": "Sports day", "risk": {"level": "high", "summary": "Very poor at 21:00",
+                                                    "action": "Move indoors", "alternative": "Try 15:00",
+                                                    "benefit": "Less exposure", "confidence": "low"}},
         {"id": "e2", "title": "Quiz", "risk": {"level": "low"}},
         {"id": "e3", "title": "No risk yet"},
     ]
@@ -338,11 +298,7 @@ def test_community_events_at_risk_become_recommendations(data):
     assert len(ev) == 1
     assert ev[0]["id"] == "event_e1" and ev[0]["title"] == "Upcoming: Sports day"
     assert (ev[0]["what_is_happening"], ev[0]["action"], ev[0]["alternative"], ev[0]["expected_benefit"]) == (
-        "Very poor at 21:00",
-        "Move indoors",
-        "Try 15:00",
-        "Less exposure",
-    )
+        "Very poor at 21:00", "Move indoors", "Try 15:00", "Less exposure")
     assert ev[0]["confidence"]["level"] == "low"
 
 
@@ -352,36 +308,24 @@ def test_format_and_confidence_helpers(data):
     assert re_engine._fmt_time("2026-11-19T21:00") == "Thu 21:00"
     assert re_engine._fmt_time("xxxxxxxxxxx21:30zz") == "21:30"
     base = {"level": "high", "reasons": ["a", "b", "c"]}
-    assert re_engine._hour_conf(base, 30) == {
-        "level": "low",
-        "reason": "a; b Forecast more than 24 hours ahead is less reliable.",
-    }
-    assert re_engine._hour_conf(base, 10) == {
-        "level": "high",
-        "reason": "a; b Includes forecast hours, which are uncertain.",
-    }
-    assert re_engine._hour_conf({"level": "low", "reasons": []}, 0) == {
-        "level": "low",
-        "reason": "Based on current model data.",
-    }
+    assert re_engine._hour_conf(base, 30) == {"level": "low", "reason": "a; b Forecast more than 24 hours ahead "
+                                                                        "is less reliable."}
+    assert re_engine._hour_conf(base, 10) == {"level": "high", "reason": "a; b Includes forecast hours, which "
+                                                                         "are uncertain."}
+    assert re_engine._hour_conf({"level": "low", "reasons": []}, 0) == {"level": "low",
+                                                                       "reason": "Based on current model data."}
     ref = re_engine._ref("Wind", 3, "km/h", snapshot, kind="weather")
     assert ref["source"] is None and ref["source_type"] is None
 
 
 # ----------------------------------------------------------------------------- briefing
 
-
-@pytest.mark.parametrize(
-    "severity, headline",
-    [
-        (0, "Air quality is good."),
-        (1, "Air quality is satisfactory."),
-        (2, "Air quality is moderate; sensitive people should take care."),
-        (3, "Air pollution is elevated in your area."),
-        (4, "Air pollution is very high in your area."),
-        (5, "Air pollution is at severe levels."),
-    ],
-)
+@pytest.mark.parametrize("severity, headline", [
+    (0, "Air quality is good."), (1, "Air quality is satisfactory."),
+    (2, "Air quality is moderate; sensitive people should take care."),
+    (3, "Air pollution is elevated in your area."), (4, "Air pollution is very high in your area."),
+    (5, "Air pollution is at severe levels."),
+])
 def test_fallback_briefing_headline(data, severity, headline):
     snapshot, _ = data
     _set_category(snapshot, severity)
@@ -398,22 +342,17 @@ def test_fallback_briefing_summary_and_key_points(data):
     assert out["summary"].startswith("Reduce outdoor exposure during high-pollution periods.")
     assert out["summary"].endswith("The model forecast shows conditions worsening over the next 12 hours.")
     cat = snapshot["aqi"]["category"]
-    assert out["key_points"] == [
-        f"{cat['label']}: {cat['health']}",
-        a["dispersion"]["explanation"],
-        "PM2.5 has been falling over the last 3 hours (-12%).",
-        "Values are model estimates; check a nearby monitor for street-level conditions.",
-    ]
+    assert out["key_points"] == [f"{cat['label']}: {cat['health']}", a["dispersion"]["explanation"],
+                                 "PM2.5 has been falling over the last 3 hours (-12%).",
+                                 "Values are model estimates; check a nearby monitor for street-level conditions."]
     assert out["recommendations"] == [{"id": "x"}] and out["generated_by"] == "rules"
 
     _set_category(snapshot, 2)
     a["outlook_12h"] = {"direction": "improving"}
     snapshot["sources"]["air"] = {**snapshot["sources"]["air"], "type": "station"}
     out = re_engine.fallback_briefing(snapshot, [])
-    assert out["summary"] == (
-        "Most people can go about normal activity; sensitive groups should limit prolonged "
-        "exertion. The model forecast shows some improvement over the next 12 hours."
-    )
+    assert out["summary"] == ("Most people can go about normal activity; sensitive groups should limit prolonged "
+                              "exertion. The model forecast shows some improvement over the next 12 hours.")
     assert out["key_points"][-1] == "Based on monitor data."
     _set_category(snapshot, 0)
     assert re_engine.fallback_briefing(snapshot, [])["summary"].startswith("Conditions are suitable")
@@ -424,29 +363,15 @@ def test_briefing_without_ai_uses_rules(data):
     out = asyncio.run(re_engine.briefing(snapshot, series, {"language": "hi"}, None))
     assert out["generated_by"] == "rules" and out["language"] == "en" and out["ai_available"] is False
     assert out["observed_at"] == snapshot["observed_at"] and out["is_demo"] is False
-    assert [r["id"] for r in out["recommendations"]] == _ids(
-        re_engine.build_recommendations(snapshot, series, {"language": "hi"})
-    )
+    assert [r["id"] for r in out["recommendations"]] == _ids(re_engine.build_recommendations(snapshot, series,
+                                                                                             {"language": "hi"}))
 
 
 def test_briefing_ai_path_merges_and_caches(data, monkeypatch):
     snapshot, series = data
-    ai = AIBriefing(
-        headline="Smoggy day",
-        summary="Stay in.",
-        key_points=["One", "Two"],
-        recommendations=[
-            AIRecText(
-                id="protection",
-                title="Wear an N95",
-                what_is_happening="Smog",
-                why_it_matters="Lungs",
-                action="Mask up",
-                alternative="Stay in",
-                expected_benefit="Less exposure",
-            )
-        ],
-    )
+    ai = AIBriefing(headline="Smoggy day", summary="Stay in.", key_points=["One", "Two"], recommendations=[
+        AIRecText(id="protection", title="Wear an N95", what_is_happening="Smog", why_it_matters="Lungs",
+                  action="Mask up", alternative="Stay in", expected_benefit="Less exposure")])
     calls = _ai(monkeypatch, ai)
     profile = {"language": "hi", "community_type": "household", "family_context": {"children": True}}
     out = asyncio.run(re_engine.briefing(snapshot, series, profile))
@@ -483,7 +408,6 @@ def test_briefing_skips_ai_for_demo_and_when_disabled(data, monkeypatch):
 
 # ----------------------------------------------------------------------------- routes
 
-
 def test_briefing_and_chat_routes_include_upcoming_community_events(sample_bundle, monkeypatch):
     _, bundle = sample_bundle
 
@@ -492,44 +416,15 @@ def test_briefing_and_chat_routes_include_upcoming_community_events(sample_bundl
 
     monkeypatch.setattr(ambient, "get_bundle", fake_bundle)
     store = get_store()
-    asyncio.run(
-        store.set(
-            "communities",
-            "c1",
-            {
-                "name": "Green Park",
-                "type": "apartment",
-                "location": {"id": "28.61_77.21", "name": "New Delhi", "lat": 28.6139, "lon": 77.209},
-            },
-        )
-    )
-    asyncio.run(
-        store.set(
-            "community_events",
-            "e1",
-            {
-                "community_id": "c1",
-                "kind": "activity",
-                "title": "Annual run",
-                "date": "2099-01-01",
-                "time": "07:00",
-                "risk": {"level": "severe", "summary": "Severe smog expected", "action": "Postpone"},
-            },
-        )
-    )
-    asyncio.run(
-        store.set(
-            "community_events",
-            "e0",
-            {
-                "community_id": "c1",
-                "kind": "activity",
-                "title": "Past run",
-                "date": "2000-01-01",
-                "risk": {"level": "severe", "summary": "old"},
-            },
-        )
-    )
+    asyncio.run(store.set("communities", "c1", {"name": "Green Park", "type": "apartment",
+                                                "location": {"id": "28.61_77.21", "name": "New Delhi",
+                                                             "lat": 28.6139, "lon": 77.209}}))
+    asyncio.run(store.set("community_events", "e1", {
+        "community_id": "c1", "kind": "activity", "title": "Annual run", "date": "2099-01-01", "time": "07:00",
+        "risk": {"level": "severe", "summary": "Severe smog expected", "action": "Postpone"}}))
+    asyncio.run(store.set("community_events", "e0", {
+        "community_id": "c1", "kind": "activity", "title": "Past run", "date": "2000-01-01",
+        "risk": {"level": "severe", "summary": "old"}}))
     limiter.reset()
     with TestClient(app) as c:
         body = c.get("/api/insights/briefing").json()
@@ -538,10 +433,8 @@ def test_briefing_and_chat_routes_include_upcoming_community_events(sample_bundl
         rec = next(r for r in body["recommendations"] if r["id"] == "event_e1")
         assert rec["title"] == "Upcoming: Annual run" and rec["action"] == "Postpone"
 
-        chat = c.post(
-            "/api/assistant/chat",
-            json={"question": "Can we organise a party?", "lat": 28.61, "lon": 77.21, "name": "Here"},
-        ).json()
+        chat = c.post("/api/assistant/chat", json={"question": "Can we organise a party?", "lat": 28.61,
+                                                   "lon": 77.21, "name": "Here"}).json()
         assert chat["intent"] == "event" and chat["generated_by"] == "rules"
         assert chat["answer"].startswith("In **Test City**")
     limiter.reset()

@@ -11,13 +11,8 @@ def _user():
     return u
 
 
-SIGNAL = {
-    "key": "deterioration:x:2026-11-19:10",
-    "category": "deterioration",
-    "severity": "medium",
-    "title": "PM2.5 is rising",
-    "message": "Test",
-}
+SIGNAL = {"key": "deterioration:x:2026-11-19:10", "category": "deterioration", "severity": "medium",
+          "title": "PM2.5 is rising", "message": "Test"}
 NOON = datetime(2026, 11, 19, 12, 0)
 
 

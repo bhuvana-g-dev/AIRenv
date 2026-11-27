@@ -3,14 +3,12 @@ name = "airenv-backend"
 version = "1.1.0"
 description = "AIRenv environmental intelligence API"
 requires-python = ">=3.12"
+
 [tool.ruff]
 line-length = 120
 target-version = "py312"
 extend-exclude = [".venv", "data"]
-[tool.ruff.format]
-quote-style = "double"
-indent-style = "space"
-docstring-code-format = true
+
 [tool.ruff.lint]
 select = [
     "E", "W",   # pycodestyle
@@ -23,11 +21,6 @@ select = [
     "SIM",      # simplifications
     "RUF",      # ruff-specific
     "C4",       # comprehensions
-    "C90",      # McCabe complexity
-    "PL",       # pylint
-    "PERF",     # performance anti-patterns
-    "PT",       # pytest style
-    "TRY",      # exception-handling style
     "PIE",
     "RET",
 ]
@@ -37,54 +30,15 @@ ignore = [
     "S311",    # random is not used for security
     "SIM108",  # ternaries are not always clearer
     "RET504", "RET505",
-    # HTTPException(404, "Community not found") is FastAPI's documented style; the message *is* the API
-    # contract, so one exception subclass per message would add ceremony without information.
-    "TRY003",
-    # log.error(...) without a traceback is deliberate: handled provider outages are expected, and
-    # tracebacks of upstream calls can embed request URLs that carry credentials (CPCB key, bot token).
-    "TRY400",
-    # Lazily created module singletons (HTTP client, store, scheduler task, Telegram bot state).
-    # Tests reset them with monkeypatch.setattr(module, name, ...), so they must stay module globals.
-    "PLW0603",
 ]
-[tool.ruff.lint.mccabe]
-max-complexity = 10
-[tool.ruff.lint.pylint]
-# The assistant/AI entry points take six independent inputs (question, history, snapshot, series,
-# profile, events), passed positionally by routes and tests; wrapping them in an ad-hoc object would hide them.
-max-args = 6
-max-positional-args = 6
+
 [tool.ruff.lint.per-file-ignores]
-# pytest-style rules only make sense for tests (`test_notification` in app/api is an endpoint, not a test).
-"app/**" = ["PT"]
 # Tests: asserts, fake secrets, parallel-list zips, and fakes mirroring httpx's `timeout=` signature.
-# Literal expected values (PLR2004), compound asserts on related fields (PT018), "a, b" parametrize names
-# (PT006), fixtures with many injected arguments (PLR0913/PLR0917), messages in fake errors (TRY003) and
-# local imports of fakes (PLC0415) are the existing test style; rewriting ~250 assertions would be churn.
-"tests/**" = [
-    "S101", "S105", "S106", "S108", "B017", "B905", "RUF012", "ASYNC109",
-    "PLR2004", "PT006", "PT011", "PT018", "PT022", "PLR0913", "PLR0917", "TRY003", "PLC0415",
-]
+"tests/**" = ["S101", "S105", "S106", "S108", "B017", "B905", "RUF012", "ASYNC109"]
+
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
-[tool.mypy]
-python_version = "3.12"
-plugins = ["pydantic.mypy"]
-files = ["app"]
-disallow_untyped_defs = true
-check_untyped_defs = true
-warn_unused_ignores = true
-warn_redundant_casts = true
-no_implicit_optional = true
-strict_equality = true
-[[tool.mypy.overrides]]
-# firebase_admin and google-cloud-firestore are imported lazily and ship without type information.
-module = ["firebase_admin.*", "firebase_admin", "google.*"]
-ignore_missing_imports = true
-[tool.pydantic-mypy]
-init_forbid_extra = true
-init_typed = true
-warn_required_dynamic_aliases = true
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra"
@@ -93,9 +47,11 @@ filterwarnings = [
     "ignore::DeprecationWarning:fastapi.testclient",
     "ignore:Using `httpx` with `starlette.testclient`",
 ]
+
 [tool.coverage.run]
 source = ["app"]
 branch = true
+
 [tool.coverage.report]
 show_missing = true
 skip_covered = true

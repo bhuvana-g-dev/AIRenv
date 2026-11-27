@@ -1,5 +1,4 @@
 """Air API routes: location search/reverse, current, history, refresh failures and stations (no network)."""
-
 import asyncio
 
 import pytest
@@ -68,13 +67,8 @@ def test_current_and_history_routes(client, sample_bundle):
     assert snap["observed_local"] == "2026-11-19T10:00" and snap["location"]["name"] == "Test City"
     assert client.requested[-1][0].name == "Here" and client.requested[-1][1] == {"allow_demo": False}
 
-    asyncio.run(
-        get_store().set(
-            "history",
-            "28.61_77.21_2026111909",
-            {"location_id": "28.61_77.21", "hour": "2026-11-19T09:00", "pm2_5": 120},
-        )
-    )
+    asyncio.run(get_store().set("history", "28.61_77.21_2026111909", {"location_id": "28.61_77.21",
+                                                                      "hour": "2026-11-19T09:00", "pm2_5": 120}))
     hist = client.get("/api/air/history", params={"demo": True}).json()
     assert [r["hour"] for r in hist["recorded"]] == ["2026-11-19T09:00"]
     assert hist["is_demo"] is False and "seven_day_mean" in hist["comparisons"]
@@ -88,12 +82,8 @@ def test_manual_refresh_upstream_failure_is_503(client, monkeypatch):
     monkeypatch.setattr("app.scheduler.refresh_location", failing_refresh)
     r = client.post("/api/air/refresh")
     assert r.status_code == 503
-    assert r.json()["detail"] == {
-        "code": "data_unavailable",
-        "message": "timeout",
-        "provider": "Open-Meteo Air Quality",
-        "demo_available": True,
-    }
+    assert r.json()["detail"] == {"code": "data_unavailable", "message": "timeout",
+                                  "provider": "Open-Meteo Air Quality", "demo_available": True}
 
 
 def test_manual_refresh_inside_cooldown_without_cache_refreshes_again(client, monkeypatch):
@@ -115,10 +105,9 @@ def test_stations_route_respects_profile_sources_and_flags_hotspots(client, monk
 
     async def fake_fetch(lat, lon, radius_km, enabled):
         seen.append((lat, lon, radius_km, enabled))
-        stations = [
-            {"id": s, "name": s, "provider": "CPCB", "distance_km": i, "readings": {"pm2_5": {"value": v}}}
-            for i, (s, v) in enumerate([("a", 50), ("b", 60), ("c", 70), ("d", 80), ("e", 200)])
-        ]
+        stations = [{"id": s, "name": s, "provider": "CPCB", "distance_km": i,
+                     "readings": {"pm2_5": {"value": v}}} for i, (s, v) in enumerate(
+            [("a", 50), ("b", 60), ("c", 70), ("d", 80), ("e", 200)])]
         return {"stations": stations, "providers": [], "fetched_at": "now"}
 
     monkeypatch.setattr(env, "fetch_stations", fake_fetch)
@@ -131,12 +120,7 @@ def test_stations_route_respects_profile_sources_and_flags_hotspots(client, monk
 
 
 def test_feed_route(client):
-    asyncio.run(
-        get_store().set(
-            "feed",
-            "f1",
-            {"location_id": "28.61_77.21", "type": "x", "title": "T", "created_at": "2026-11-19T00:00:00+00:00"},
-        )
-    )
+    asyncio.run(get_store().set("feed", "f1", {"location_id": "28.61_77.21", "type": "x", "title": "T",
+                                               "created_at": "2026-11-19T00:00:00+00:00"}))
     body = client.get("/api/feed", params={"limit": 5}).json()
     assert body["location_id"] == "28.61_77.21" and [i["id"] for i in body["items"]] == ["f1"]

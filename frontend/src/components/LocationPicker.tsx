@@ -15,15 +15,7 @@ export function LocationSearch({ onSelect, initialFocus }: { onSelect: (l: Locat
   const resultsId = `${id}-results`;
   const statusId = `${id}-status`;
   const searching = q.trim().length >= 2;
-  const status = !searching
-    ? ""
-    : loading
-      ? "Searching…"
-      : error
-        ? ""
-        : results.length === 0
-          ? "No places found."
-          : `${results.length} place${results.length === 1 ? "" : "s"} found.`;
+  const status = !searching ? "" : loading ? "Searching…" : error ? "" : results.length === 0 ? "No places found." : `${results.length} place${results.length === 1 ? "" : "s"} found.`;
   return (
     <div>
       <div className="relative">
@@ -40,9 +32,7 @@ export function LocationSearch({ onSelect, initialFocus }: { onSelect: (l: Locat
           aria-describedby={statusId}
           autoComplete="off"
         />
-        {loading && (
-          <Loader2 aria-hidden="true" className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted motion-safe:animate-spin" />
-        )}
+        {loading && <Loader2 aria-hidden="true" className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted motion-safe:animate-spin" />}
       </div>
       <p id={statusId} role="status" className="sr-only">
         {status}
@@ -80,11 +70,7 @@ export function LocationSearch({ onSelect, initialFocus }: { onSelect: (l: Locat
       <ul id={resultsId} aria-label="Location results" className="mt-3 max-h-72 space-y-1 overflow-y-auto">
         {results.map((r, i) => (
           <motion.li key={r.id + r.name} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.03 }}>
-            <button
-              type="button"
-              onClick={() => onSelect(r)}
-              className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-white/5"
-            >
+            <button type="button" onClick={() => onSelect(r)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-white/5">
               <MapPin aria-hidden="true" className="h-4 w-4 text-mint" />
               <span>
                 <span className="block text-sm">{r.name}</span>
@@ -116,8 +102,7 @@ export function LocationModal({ open, onClose, onSelect }: { open: boolean; onCl
         }}
       />
       <p className="mt-4 text-[11px] text-faint">
-        Place search by Open-Meteo Geocoding. Current location uses your browser's permission prompt and is reverse-geocoded with
-        OpenStreetMap Nominatim.
+        Place search by Open-Meteo Geocoding. Current location uses your browser's permission prompt and is reverse-geocoded with OpenStreetMap Nominatim.
       </p>
     </Modal>
   );

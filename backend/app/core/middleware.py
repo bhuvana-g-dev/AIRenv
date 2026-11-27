@@ -3,7 +3,6 @@
 Both are written as plain ASGI middleware (not BaseHTTPMiddleware) so streaming
 responses such as the SSE endpoint pass through without buffering.
 """
-
 from __future__ import annotations
 
 import json
@@ -19,12 +18,10 @@ ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
 # The API only returns JSON and event streams, so nothing may be framed, scripted or embedded.
 API_CSP = "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
 # Swagger UI loads its assets from jsDelivr and uses an inline bootstrap script.
-DOCS_CSP = (
-    "default-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
-    "img-src 'self' data: https://fastapi.tiangolo.com; "
-    "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'"
-)
+DOCS_CSP = ("default-src 'none'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "
+            "img-src 'self' data: https://fastapi.tiangolo.com; "
+            "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'")
 DOCS_PATHS = ("/api/docs", "/api/openapi.json")
 
 
@@ -77,9 +74,15 @@ class BodySizeLimitMiddleware:
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return
-        if self._declared_too_big(scope):
-            await self._reject(send)
-            return
+        for name, value in scope.get("headers", []):
+            if name == b"content-length":
+                try:
+                    too_big = int(value) > self.max_bytes
+                except ValueError:
+                    too_big = True
+                if too_big:
+                    await self._reject(send)
+                    return
         received = 0
         response_started = False
 
@@ -104,29 +107,12 @@ class BodySizeLimitMiddleware:
             if not response_started:
                 await self._reject(send)
 
-    def _declared_too_big(self, scope: Scope) -> bool:
-        """True when any Content-Length header exceeds the limit or is not a number."""
-        for name, value in scope.get("headers", []):
-            if name != b"content-length":
-                continue
-            try:
-                too_big = int(value) > self.max_bytes
-            except ValueError:
-                too_big = True
-            if too_big:
-                return True
-        return False
-
     @staticmethod
     async def _reject(send: Send) -> None:
         body = json.dumps({"detail": "Request body too large"}).encode()
-        await send(
-            {
-                "type": "http.response.start",
-                "status": 413,
-                "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())],
-            }
-        )
+        await send({"type": "http.response.start", "status": 413,
+                    "headers": [(b"content-type", b"application/json"),
+                                (b"content-length", str(len(body)).encode())]})
         await send({"type": "http.response.body", "body": body})
 
 

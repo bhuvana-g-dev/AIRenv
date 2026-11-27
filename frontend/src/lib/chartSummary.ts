@@ -43,9 +43,7 @@ export function trendSummary({
   if (p.max && p.min) parts.push(`Past ${past.length} hours ranged ${fmtNum(p.min.v)} to ${fmtNum(p.max.v)}${u}.`);
   const f = extremes(future, (x) => x.value);
   if (f.max && f.min)
-    parts.push(
-      `Forecast for the next ${future.length} hours: peak ${describe(f.max.v)} at ${localDayHour(f.max.row.t)}, lowest ${fmtNum(f.min.v)}${u} at ${localDayHour(f.min.row.t)}.`,
-    );
+    parts.push(`Forecast for the next ${future.length} hours: peak ${describe(f.max.v)} at ${localDayHour(f.max.row.t)}, lowest ${fmtNum(f.min.v)}${u} at ${localDayHour(f.min.row.t)}.`);
   return parts.join(" ");
 }
 

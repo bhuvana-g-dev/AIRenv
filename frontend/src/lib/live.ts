@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { create } from "zustand";
 import { API_BASE, post } from "./api";
-import { useToasts, type Toast } from "./store";
+import { useToasts } from "./store";
 import type { FeedItem, NotificationItem } from "./types";
 
 type LiveStatus = "connecting" | "live" | "offline";
@@ -15,25 +15,6 @@ export const useLiveStatus = create<{ status: LiveStatus; lastEventAt: number | 
     tick: () => set({ lastEventAt: Date.now() }),
   }),
 );
-
-const BASE_RETRY_MS = 2000;
-const MAX_RETRY_MS = 30000;
-
-/** Exponential back-off for SSE reconnects: 2 s, 4 s, 8 s … capped at 30 s. */
-export function reconnectDelay(attempt: number): number {
-  return Math.min(MAX_RETRY_MS, BASE_RETRY_MS * 2 ** attempt);
-}
-
-/** Toast tone for a pushed notification: severe ones are danger, good news is success. */
-export function notificationTone(n: Pick<NotificationItem, "severity" | "category">): Toast["tone"] {
-  if (n.severity === "critical" || n.severity === "high") return "danger";
-  return n.category === "positive" ? "success" : "warning";
-}
-
-/** SSE payloads are JSON strings produced by our own backend. */
-function parseEventData<T>(e: MessageEvent): T {
-  return JSON.parse(e.data as string) as T;
-}
 
 /**
  * Subscribes to server-sent events for a location (and, with a ticket, the signed-in user).
@@ -75,22 +56,27 @@ export function useLiveStream(locationId: string | undefined) {
       });
       es.addEventListener("feed.created", (e) => {
         tick();
-        const item = parseEventData<FeedItem>(e);
+        const item = JSON.parse((e as MessageEvent).data) as FeedItem;
         qc.setQueriesData<{ items: FeedItem[] }>({ queryKey: ["feed"] }, (old) =>
           old && !old.items.some((x) => x.id === item.id) ? { ...old, items: [item, ...old.items] } : old,
         );
       });
       es.addEventListener("notification.created", (e) => {
         tick();
-        const n = parseEventData<NotificationItem>(e);
+        const n = JSON.parse((e as MessageEvent).data) as NotificationItem;
         void qc.invalidateQueries({ queryKey: ["notifications"] });
-        push({ title: n.title, message: n.message, tone: notificationTone(n) });
+        push({
+          title: n.title,
+          message: n.message,
+          tone: n.severity === "critical" || n.severity === "high" ? "danger" : n.category === "positive" ? "success" : "warning",
+        });
       });
       es.onerror = () => {
         setStatus("offline");
         es?.close();
         if (closed) return;
-        timer = setTimeout(() => void connect(), reconnectDelay(retry.current++));
+        const delay = Math.min(30000, 2000 * 2 ** retry.current++);
+        timer = setTimeout(connect, delay);
       };
     };
     void connect();

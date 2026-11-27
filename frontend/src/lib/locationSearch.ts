@@ -2,8 +2,6 @@ import { useEffect, useState } from "react";
 import { api } from "./api";
 import type { Location } from "./types";
 
-const SEARCH_DEBOUNCE_MS = 300;
-
 /** Debounced place search against the backend geocoder. Aborts superseded requests. */
 export function useLocationSearch(query: string) {
   const [results, setResults] = useState<Location[]>([]);
@@ -15,22 +13,18 @@ export function useLocationSearch(query: string) {
       return;
     }
     const ctrl = new AbortController();
-    // `run` handles its own errors, so the debounced call can safely discard the promise.
-    const run = async () => {
+    const t = setTimeout(async () => {
       setLoading(true);
       setError(null);
       try {
-        const r = await api<{ results: Location[] }>(`/api/locations/search?q=${encodeURIComponent(query.trim())}`, {
-          signal: ctrl.signal,
-        });
+        const r = await api<{ results: Location[] }>(`/api/locations/search?q=${encodeURIComponent(query.trim())}`, { signal: ctrl.signal });
         setResults(r.results);
       } catch (e) {
         if ((e as Error).name !== "AbortError" && !ctrl.signal.aborted) setError((e as Error).message);
       } finally {
         setLoading(false);
       }
-    };
-    const t = setTimeout(() => void run(), SEARCH_DEBOUNCE_MS);
+    }, 300);
     return () => {
       clearTimeout(t);
       ctrl.abort();
@@ -46,15 +40,11 @@ export async function currentPosition(): Promise<Location> {
       reject(new Error("Geolocation is not supported by this browser."));
       return;
     }
-    navigator.geolocation.getCurrentPosition(
-      resolve,
-      (e) => reject(new Error(e.code === 1 ? "Location permission was denied." : "Could not determine your location.")),
-      {
-        enableHighAccuracy: false,
-        timeout: 12000,
-        maximumAge: 300000,
-      },
-    );
+    navigator.geolocation.getCurrentPosition(resolve, (e) => reject(new Error(e.code === 1 ? "Location permission was denied." : "Could not determine your location.")), {
+      enableHighAccuracy: false,
+      timeout: 12000,
+      maximumAge: 300000,
+    });
   });
   const { latitude, longitude } = pos.coords;
   try {

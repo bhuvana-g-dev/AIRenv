@@ -1,5 +1,4 @@
 """Community API routes exercised end-to-end through the FastAPI test client (no network)."""
-
 import asyncio
 from datetime import datetime
 
@@ -60,16 +59,8 @@ def _community(client, name="Sunrise School", ctype="school"):
 
 
 def _event_body(**extra):
-    return {
-        "title": "Sports day",
-        "activity_type": "sports",
-        "intensity": "high",
-        "outdoor": True,
-        "date": "2026-11-20",
-        "time": "21:00",
-        "duration_hours": 2,
-        **extra,
-    }
+    return {"title": "Sports day", "activity_type": "sports", "intensity": "high", "outdoor": True,
+            "date": "2026-11-20", "time": "21:00", "duration_hours": 2, **extra}
 
 
 def _store(coll, doc_id, doc):
@@ -81,7 +72,6 @@ def _get(coll, doc_id):
 
 
 # ----------------------------------------------------------------------------- create / list / detail
-
 
 def test_create_community_derives_location_id(client):
     c = _community(client)
@@ -124,18 +114,8 @@ def test_detail_for_member_lists_records_and_hides_connect_codes(client, monkeyp
     _store("initiatives", "i1", {"community_id": c["id"], "type": "carpool", "title": "Pool"})
     _store("initiatives", "i2", {"community_id": c["id"], "type": "custom_thing", "title": "Other"})
     for rid, date in (("r1", "2026-10-01"), ("r2", "2026-11-01")):
-        _store(
-            "initiative_records",
-            rid,
-            {
-                "initiative_id": "i1",
-                "community_id": c["id"],
-                "date": date,
-                "participants": 5,
-                "quantity": 5,
-                "verified": True,
-            },
-        )
+        _store("initiative_records", rid, {"initiative_id": "i1", "community_id": c["id"], "date": date,
+                                           "participants": 5, "quantity": 5, "verified": True})
     _store("tg_groups", "g1", {"chat_id": "g1", "community_id": c["id"], "title": "G", "connect_code": "SECRET"})
     _as_member(monkeypatch, "friend")
     body = client.get(f"/api/communities/{c['id']}").json()
@@ -149,7 +129,6 @@ def test_detail_for_member_lists_records_and_hides_connect_codes(client, monkeyp
 
 
 # ----------------------------------------------------------------------------- events
-
 
 def test_add_event_with_risk_assessment(client, sample_bundle):
     c = _community(client)
@@ -202,37 +181,19 @@ def test_delete_event(client):
 
 # ----------------------------------------------------------------------------- advisories
 
-
 def _groups_for(cid):
-    _store(
-        "tg_groups",
-        "demo-x",
-        {"chat_id": "demo-x", "title": "Demo", "community_id": cid, "authorized": True, "is_demo": True},
-    )
-    _store(
-        "tg_groups",
-        "-100123",
-        {"chat_id": "-100123", "title": "Parents", "community_id": cid, "authorized": True, "is_demo": False},
-    )
-    _store(
-        "tg_groups",
-        "-100999",
-        {"chat_id": "-100999", "title": "Off", "community_id": cid, "authorized": False, "is_demo": False},
-    )
+    _store("tg_groups", "demo-x", {"chat_id": "demo-x", "title": "Demo", "community_id": cid, "authorized": True,
+                                   "is_demo": True})
+    _store("tg_groups", "-100123", {"chat_id": "-100123", "title": "Parents", "community_id": cid,
+                                    "authorized": True, "is_demo": False})
+    _store("tg_groups", "-100999", {"chat_id": "-100999", "title": "Off", "community_id": cid,
+                                    "authorized": False, "is_demo": False})
 
 
 def _pending(cid, **extra):
-    return asyncio.run(
-        cs.add_event(
-            cid,
-            {
-                "kind": "activity",
-                "title": "Run",
-                "advisory": {"status": "pending", "text": "Move it indoors."},
-                **extra,
-            },
-        )
-    )
+    return asyncio.run(cs.add_event(cid, {"kind": "activity", "title": "Run",
+                                          "advisory": {"status": "pending", "text": "Move it indoors."},
+                                          **extra}))
 
 
 def test_approve_sends_to_real_groups_only(client, sent):
@@ -251,13 +212,11 @@ def test_approve_sends_to_real_groups_only(client, sent):
 def test_approve_with_edited_text_targets_source_group(client, sent):
     c = _community(client)
     _groups_for(c["id"])
-    _store(
-        "tg_groups", "-100555", {"chat_id": "-100555", "title": "Teachers", "community_id": c["id"], "authorized": True}
-    )
+    _store("tg_groups", "-100555", {"chat_id": "-100555", "title": "Teachers", "community_id": c["id"],
+                                    "authorized": True})
     ev = _pending(c["id"], group_id="-100555")
-    out = client.post(
-        f"/api/communities/{c['id']}/events/{ev['id']}/advisory", json={"action": "approve", "text": "Edited advisory"}
-    ).json()
+    out = client.post(f"/api/communities/{c['id']}/events/{ev['id']}/advisory",
+                      json={"action": "approve", "text": "Edited advisory"}).json()
     assert out["advisory"]["delivered_to"] == ["Teachers"] and out["advisory"]["text"] == "Edited advisory"
     assert sent == [("-100555", "Edited advisory")]
 
@@ -271,23 +230,19 @@ def test_approve_records_delivery_errors(client, monkeypatch):
         raise RuntimeError("Telegram sendMessage failed: Forbidden: bot was kicked")
 
     monkeypatch.setattr(tg, "send_message", failing)
-    adv = client.post(f"/api/communities/{c['id']}/events/{ev['id']}/advisory", json={"action": "approve"}).json()[
-        "advisory"
-    ]
+    adv = client.post(f"/api/communities/{c['id']}/events/{ev['id']}/advisory",
+                      json={"action": "approve"}).json()["advisory"]
     assert adv["status"] == "approved" and adv["delivered_to"] == []
-    assert adv["delivery_errors"] == [
-        "Demo: demo group, message not sent",
-        "Parents: Telegram sendMessage failed: Forbidden: bot was kicked",
-    ]
+    assert adv["delivery_errors"] == ["Demo: demo group, message not sent",
+                                      "Parents: Telegram sendMessage failed: Forbidden: bot was kicked"]
 
 
 def test_dismiss_does_not_send(client, sent):
     c = _community(client)
     _groups_for(c["id"])
     ev = _pending(c["id"])
-    adv = client.post(f"/api/communities/{c['id']}/events/{ev['id']}/advisory", json={"action": "dismiss"}).json()[
-        "advisory"
-    ]
+    adv = client.post(f"/api/communities/{c['id']}/events/{ev['id']}/advisory",
+                      json={"action": "dismiss"}).json()["advisory"]
     assert adv["status"] == "dismissed" and adv["delivered_to"] == [] and adv["delivery_errors"] == []
     assert sent == []
     assert _get("community_events", ev["id"])["advisory"]["status"] == "dismissed"
@@ -309,7 +264,6 @@ def test_advisory_rejects_unknown_action(client):
 
 # ----------------------------------------------------------------------------- groups
 
-
 def test_connect_group_with_bad_code_404(client):
     c = _community(client)
     r = client.post(f"/api/communities/{c['id']}/groups/connect", json={"code": "WRONGCODE"})
@@ -318,18 +272,8 @@ def test_connect_group_with_bad_code_404(client):
 
 def test_connect_group_with_good_code(client):
     c = _community(client)
-    _store(
-        "tg_groups",
-        "-100123",
-        {
-            "chat_id": "-100123",
-            "title": "Parents",
-            "authorized": True,
-            "connect_code": "ABCD1234",
-            "location": None,
-            "community_id": None,
-        },
-    )
+    _store("tg_groups", "-100123", {"chat_id": "-100123", "title": "Parents", "authorized": True,
+                                    "connect_code": "ABCD1234", "location": None, "community_id": None})
     r = client.post(f"/api/communities/{c['id']}/groups/connect", json={"code": " ABCD1234 "})
     assert r.json() == {"ok": True, "group": "Parents"}
     g = _get("tg_groups", "-100123")
@@ -338,19 +282,8 @@ def test_connect_group_with_good_code(client):
 
 
 def _linked_group(cid, gid="-100123", **extra):
-    _store(
-        "tg_groups",
-        gid,
-        {
-            "chat_id": gid,
-            "title": "Parents",
-            "community_id": cid,
-            "authorized": True,
-            "reply_mode": "approval",
-            "is_demo": False,
-            **extra,
-        },
-    )
+    _store("tg_groups", gid, {"chat_id": gid, "title": "Parents", "community_id": cid, "authorized": True,
+                              "reply_mode": "approval", "is_demo": False, **extra})
 
 
 def test_patch_group_reply_mode(client):
@@ -394,7 +327,6 @@ def test_patch_group_of_other_community_404(client):
 
 # ----------------------------------------------------------------------------- initiatives
 
-
 def test_add_initiative_rejects_unknown_type(client):
     c = _community(client)
     r = client.post(f"/api/communities/{c['id']}/initiatives", json={"type": "rocket", "title": "Space"})
@@ -403,23 +335,17 @@ def test_add_initiative_rejects_unknown_type(client):
 
 def test_initiative_record_add_and_verify(client):
     c = _community(client)
-    ini = client.post(
-        f"/api/communities/{c['id']}/initiatives",
-        json={"type": "carpool", "title": "Office pool", "description": "Weekday pool"},
-    ).json()
+    ini = client.post(f"/api/communities/{c['id']}/initiatives",
+                      json={"type": "carpool", "title": "Office pool", "description": "Weekday pool"}).json()
     assert (ini["type"], ini["community_id"], ini["is_demo"]) == ("carpool", c["id"], False)
 
-    rec = client.post(
-        f"/api/communities/{c['id']}/initiatives/{ini['id']}/records",
-        json={"date": "2026-11-01", "participants": 12, "quantity": 12},
-    ).json()
+    rec = client.post(f"/api/communities/{c['id']}/initiatives/{ini['id']}/records",
+                      json={"date": "2026-11-01", "participants": 12, "quantity": 12}).json()
     assert rec["verified"] is False and rec["verified_by"] is None and rec["verified_at"] is None
     assert rec["created_by"] == LOCAL_UID and rec["initiative_id"] == ini["id"]
 
-    verified_now = client.post(
-        f"/api/communities/{c['id']}/initiatives/{ini['id']}/records",
-        json={"date": "2026-11-02", "participants": 3, "verified": True},
-    ).json()
+    verified_now = client.post(f"/api/communities/{c['id']}/initiatives/{ini['id']}/records",
+                               json={"date": "2026-11-02", "participants": 3, "verified": True}).json()
     assert verified_now["verified_by"] == LOCAL_UID and verified_now["verified_at"]
 
     out = client.post(f"/api/communities/{c['id']}/records/{rec['id']}/verify").json()
@@ -430,9 +356,8 @@ def test_initiative_record_add_and_verify(client):
 
 def test_record_for_unknown_initiative_or_record_404(client):
     c = _community(client)
-    r = client.post(
-        f"/api/communities/{c['id']}/initiatives/missing/records", json={"date": "2026-11-01", "participants": 1}
-    )
+    r = client.post(f"/api/communities/{c['id']}/initiatives/missing/records",
+                    json={"date": "2026-11-01", "participants": 1})
     assert r.status_code == 404 and r.json()["detail"] == "Initiative not found"
     r = client.post(f"/api/communities/{c['id']}/records/missing/verify")
     assert r.status_code == 404 and r.json()["detail"] == "Record not found"
@@ -440,11 +365,9 @@ def test_record_for_unknown_initiative_or_record_404(client):
 
 # ----------------------------------------------------------------------------- conversation analysis
 
-
 def test_conversation_analyze_stores_nothing(client):
-    r = client.post(
-        "/api/conversation/analyze", json={"text": "Cricket match tomorrow at 9 pm in the ground", "audience": "school"}
-    )
+    r = client.post("/api/conversation/analyze", json={"text": "Cricket match tomorrow at 9 pm in the ground",
+                                                       "audience": "school"})
     body = r.json()
     assert body["relevant"] is True and body["stored"] is False
     assert body["event"]["activity_type"] == "sports" and body["event"]["date"] == "2026-11-20"
@@ -455,9 +378,8 @@ def test_conversation_analyze_stores_nothing(client):
 
 
 def test_conversation_analyze_irrelevant_message(client):
-    body = client.post(
-        "/api/conversation/analyze", json={"text": "Thanks for the photos", "lat": 28.61, "lon": 77.21}
-    ).json()
+    body = client.post("/api/conversation/analyze", json={"text": "Thanks for the photos",
+                                                          "lat": 28.61, "lon": 77.21}).json()
     assert body["relevant"] is False and body["event"] is None and body["advisory"] is None
 
 

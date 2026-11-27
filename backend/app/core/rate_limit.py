@@ -1,13 +1,12 @@
 """In-memory sliding-window rate limiter (per client IP and route group)."""
-
 from __future__ import annotations
 
 import time
 from collections import deque
 
 from fastapi import Request
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.responses import JSONResponse, Response
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 
 from app.config import get_settings
 
@@ -72,7 +71,7 @@ def _too_many(message: str, retry_after: int) -> JSONResponse:
 
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+    async def dispatch(self, request: Request, call_next):
         path = request.url.path
         if not path.startswith("/api") or path.startswith(EXEMPT_PATHS) or request.method == "OPTIONS":
             return await call_next(request)

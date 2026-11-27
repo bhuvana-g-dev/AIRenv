@@ -3,21 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { axe } from "../test/utils";
-import {
-  Badge,
-  Button,
-  Card,
-  CardHeader,
-  EmptyState,
-  ErrorState,
-  Field,
-  LoadingRegion,
-  Modal,
-  PageHeader,
-  Skeleton,
-  Tabs,
-  Toggle,
-} from "./ui";
+import { Badge, Button, Card, CardHeader, EmptyState, ErrorState, Field, LoadingRegion, Modal, PageHeader, Skeleton, Tabs, Toggle } from "./ui";
 import { tabPanelId } from "../lib/tabs";
 
 describe("Button", () => {
@@ -240,16 +226,7 @@ describe("states and layout primitives", () => {
   it("keeps a valid heading outline: page h1, card h2", async () => {
     const { container } = render(
       <main>
-        <PageHeader
-          eyebrow="Alerts"
-          title="Alert centre"
-          description="Background risk detection."
-          actions={
-            <Badge dot color="#35D399">
-              Live
-            </Badge>
-          }
-        />
+        <PageHeader eyebrow="Alerts" title="Alert centre" description="Background risk detection." actions={<Badge dot color="#35D399">Live</Badge>} />
         <Card>
           <CardHeader icon={<svg aria-hidden="true" />} title="Delivery rules" subtitle="Quiet hours apply" />
         </Card>

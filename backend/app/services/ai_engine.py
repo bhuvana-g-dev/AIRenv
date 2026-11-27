@@ -4,14 +4,12 @@ The model only explains and contextualises. Every number in its output must
 come from the context AIRenv supplies; otherwise the field is rejected and the
 deterministic fallback is used.
 """
-
 from __future__ import annotations
 
 import contextlib
 import json
 import logging
 import re
-from http import HTTPStatus
 from typing import Any
 
 from pydantic import BaseModel, ValidationError
@@ -22,22 +20,9 @@ from app.core.http import client
 log = logging.getLogger("airenv.ai")
 
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-REQUEST_TIMEOUT_SECONDS = 30
-MAX_HISTORY_TURNS = 8
-HISTORY_TURN_MAX_CHARS = 2000
-# Integers up to this value may appear without support in the context (hours, counts, list ordinals).
-MAX_FREE_INTEGER = 24
 
-LANGUAGES = {
-    "en": "English",
-    "hi": "Hindi",
-    "ta": "Tamil",
-    "bn": "Bengali",
-    "mr": "Marathi",
-    "te": "Telugu",
-    "kn": "Kannada",
-    "pa": "Punjabi",
-}
+LANGUAGES = {"en": "English", "hi": "Hindi", "ta": "Tamil", "bn": "Bengali", "mr": "Marathi", "te": "Telugu",
+             "kn": "Kannada", "pa": "Punjabi"}
 
 SYSTEM_RULES = """You are AIRenv AI, the decision-intelligence layer of an environmental platform for families,
 schools and communities facing urban air pollution.
@@ -75,7 +60,7 @@ def unsupported_numbers(text: str, allowed: set[float]) -> list[str]:
             v = float(m.replace(",", ""))
         except ValueError:
             continue
-        if v <= MAX_FREE_INTEGER and float(v).is_integer():
+        if v <= 24 and float(v).is_integer():
             continue
         if any(abs(v - a) <= max(1.0, abs(a) * 0.02) for a in allowed):
             continue
@@ -94,37 +79,6 @@ def available() -> bool:
     return bool(get_settings().gemini_api_key)
 
 
-def _contents(
-    task: str, context: dict[str, Any], language: str, history: list[dict[str, str]] | None
-) -> list[dict[str, Any]]:
-    """Recent chat turns followed by the task prompt with the JSON context."""
-    contents: list[dict[str, Any]] = [
-        {
-            "role": "model" if turn.get("role") == "assistant" else "user",
-            "parts": [{"text": turn.get("content", "")[:HISTORY_TURN_MAX_CHARS]}],
-        }
-        for turn in (history or [])[-MAX_HISTORY_TURNS:]
-    ]
-    prompt = (
-        f"TASK:\n{task}\n\nRespond in {LANGUAGES.get(language, 'English')}. Return JSON only, matching the "
-        f"response schema.\n\nCONTEXT (JSON):\n{json.dumps(context, ensure_ascii=False, default=str)}"
-    )
-    contents.append({"role": "user", "parts": [{"text": prompt}]})
-    return contents
-
-
-async def _first_candidate_text(body: dict[str, Any], model: str, api_key: str) -> str | None:
-    """Raw text of Gemini's first candidate, or None on a non-200 response."""
-    resp = await client().post(
-        GEMINI_URL.format(model=model), json=body, headers={"x-goog-api-key": api_key}, timeout=REQUEST_TIMEOUT_SECONDS
-    )
-    if resp.status_code != HTTPStatus.OK:
-        log.warning("Gemini HTTP %s: %s", resp.status_code, resp.text[:300])
-        return None
-    text: str = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
-    return text
-
-
 async def generate_json[T: BaseModel](
     task: str,
     context: dict[str, Any],
@@ -138,9 +92,17 @@ async def generate_json[T: BaseModel](
     s = get_settings()
     if not s.gemini_api_key:
         return None
+    lang = LANGUAGES.get(language, "English")
+    contents: list[dict[str, Any]] = []
+    for turn in (history or [])[-8:]:
+        role = "model" if turn.get("role") == "assistant" else "user"
+        contents.append({"role": role, "parts": [{"text": turn.get("content", "")[:2000]}]})
+    prompt = (f"TASK:\n{task}\n\nRespond in {lang}. Return JSON only, matching the response schema.\n\n"
+              f"CONTEXT (JSON):\n{json.dumps(context, ensure_ascii=False, default=str)}")
+    contents.append({"role": "user", "parts": [{"text": prompt}]})
     body = {
         "systemInstruction": {"parts": [{"text": SYSTEM_RULES}]},
-        "contents": _contents(task, context, language, history),
+        "contents": contents,
         "generationConfig": {
             "temperature": temperature,
             "responseMimeType": "application/json",
@@ -148,15 +110,19 @@ async def generate_json[T: BaseModel](
         },
     }
     try:
-        text = await _first_candidate_text(body, s.gemini_model, s.gemini_api_key)
-        result = schema_model.model_validate_json(text) if text is not None else None
+        resp = await client().post(GEMINI_URL.format(model=s.gemini_model), json=body,
+                                   headers={"x-goog-api-key": s.gemini_api_key}, timeout=30)
+        if resp.status_code != 200:
+            log.warning("Gemini HTTP %s: %s", resp.status_code, resp.text[:300])
+            return None
+        data = resp.json()
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+        result = schema_model.model_validate_json(text)
     except (KeyError, IndexError, ValidationError, ValueError) as exc:
         log.warning("Gemini response rejected: %s", exc)
         return None
     except Exception as exc:  # network errors, timeouts
         log.warning("Gemini call failed: %s", exc)
-        return None
-    if result is None:
         return None
     ok, bad = guard_numbers(result, context)
     if not ok:
@@ -168,7 +134,8 @@ async def generate_json[T: BaseModel](
 def _to_gemini_schema(schema: dict[str, Any]) -> dict[str, Any]:
     """Convert a Pydantic JSON schema to the OpenAPI subset accepted by Gemini (inline $refs, drop titles)."""
     defs = schema.get("$defs", {})
-    dropped = {"title", "$defs", "default", "additionalProperties", "examples", "maxLength", "minLength", "pattern"}
+    dropped = {"title", "$defs", "default", "additionalProperties", "examples", "maxLength", "minLength",
+               "pattern"}
 
     def conv(node: Any) -> Any:
         if isinstance(node, dict):

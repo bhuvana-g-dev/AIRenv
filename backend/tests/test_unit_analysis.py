@@ -1,5 +1,4 @@
 """Unit tests for the deterministic pollution analysis and rule-based risk detection."""
-
 import pytest
 
 from app.services import pollution_analyzer as pa
@@ -8,35 +7,29 @@ from app.services import risk_detection as rd
 # --------------------------------------------------------------------------- sub_index
 
 
-@pytest.mark.parametrize(
-    "pollutant, upper_bounds",
-    [
-        ("pm10", [50, 100, 250, 350, 430, 600]),
-        ("pm2_5", [30, 60, 90, 120, 250, 380]),
-        ("no2", [40, 80, 180, 280, 400, 800]),
-        ("o3", [50, 100, 168, 208, 748, 1000]),
-        ("co", [1.0, 2.0, 10, 17, 34, 50]),
-        ("so2", [40, 80, 380, 800, 1600, 2400]),
-    ],
-)
+@pytest.mark.parametrize("pollutant, upper_bounds", [
+    ("pm10", [50, 100, 250, 350, 430, 600]),
+    ("pm2_5", [30, 60, 90, 120, 250, 380]),
+    ("no2", [40, 80, 180, 280, 400, 800]),
+    ("o3", [50, 100, 168, 208, 748, 1000]),
+    ("co", [1.0, 2.0, 10, 17, 34, 50]),
+    ("so2", [40, 80, 380, 800, 1600, 2400]),
+])
 def test_sub_index_hits_band_top_at_every_breakpoint(pollutant, upper_bounds):
     expected_tops = [50, 100, 200, 300, 400, 500]
     assert [pa.sub_index(pollutant, c) for c in upper_bounds] == expected_tops
     assert pa.sub_index(pollutant, 0) == 0
 
 
-@pytest.mark.parametrize(
-    "pollutant, conc, expected",
-    [
-        ("pm2_5", 30.1, 51),  # just above the Good band jumps to the bottom of Satisfactory
-        ("pm2_5", 40, 67),  # 51 + 49 * 10/30
-        ("pm10", 51, 52),  # 51 + 49 * 1/50
-        ("co", 0.5, 25),  # half of the Good band
-        ("so2", 20, 25),
-        ("o3", 25, 25),
-        ("no2", 20, 25),
-    ],
-)
+@pytest.mark.parametrize("pollutant, conc, expected", [
+    ("pm2_5", 30.1, 51),     # just above the Good band jumps to the bottom of Satisfactory
+    ("pm2_5", 40, 67),       # 51 + 49 * 10/30
+    ("pm10", 51, 52),        # 51 + 49 * 1/50
+    ("co", 0.5, 25),         # half of the Good band
+    ("so2", 20, 25),
+    ("o3", 25, 25),
+    ("no2", 20, 25),
+])
 def test_sub_index_interpolates_inside_bands(pollutant, conc, expected):
     assert pa.sub_index(pollutant, conc) == expected
 
@@ -53,25 +46,11 @@ def test_sub_index_rejects_negative_concentration():
 # --------------------------------------------------------------------------- category_for
 
 
-@pytest.mark.parametrize(
-    "aqi, key",
-    [
-        (0, "good"),
-        (50, "good"),
-        (50.5, "satisfactory"),
-        (51, "satisfactory"),
-        (100, "satisfactory"),
-        (101, "moderate"),
-        (200, "moderate"),
-        (201, "poor"),
-        (300, "poor"),
-        (301, "very_poor"),
-        (400, "very_poor"),
-        (401, "severe"),
-        (500, "severe"),
-        (900, "severe"),
-    ],
-)
+@pytest.mark.parametrize("aqi, key", [
+    (0, "good"), (50, "good"), (50.5, "satisfactory"), (51, "satisfactory"), (100, "satisfactory"),
+    (101, "moderate"), (200, "moderate"), (201, "poor"), (300, "poor"), (301, "very_poor"), (400, "very_poor"),
+    (401, "severe"), (500, "severe"), (900, "severe"),
+])
 def test_category_for_band_edges(aqi, key):
     assert pa.category_for(aqi)["key"] == key
 
@@ -86,7 +65,7 @@ def test_category_for_none():
 def test_naqi_uses_8h_window_for_co_and_o3():
     hist = {
         "pm2_5": [20.0] * 24,
-        "co": [10.0] * 16 + [2.0] * 8,  # 8-h mean = 2.0 mg/m³ -> 100
+        "co": [10.0] * 16 + [2.0] * 8,   # 8-h mean = 2.0 mg/m³ -> 100
         "o3": [168.0] * 16 + [50.0] * 8,  # 8-h mean = 50 -> 50
     }
     r = pa.compute_naqi(hist)
@@ -138,14 +117,11 @@ def test_naqi_with_none_inside_window_averages_remaining_hours():
     assert r["averages"]["pm2_5"] == {"value": 60.0, "hours_used": 20, "period_hours": 24}
 
 
-@pytest.mark.parametrize(
-    "hist, valid",
-    [
-        ({"pm10": [100.0] * 24, "no2": [40.0] * 24, "so2": [40.0] * 24}, True),  # PM10 counts as PM
-        ({"no2": [40.0] * 24, "so2": [40.0] * 24, "co": [1.0] * 8}, False),  # three, but no PM
-        ({"pm2_5": [40.0] * 24, "no2": [40.0] * 24}, False),  # PM, but only two
-    ],
-)
+@pytest.mark.parametrize("hist, valid", [
+    ({"pm10": [100.0] * 24, "no2": [40.0] * 24, "so2": [40.0] * 24}, True),   # PM10 counts as PM
+    ({"no2": [40.0] * 24, "so2": [40.0] * 24, "co": [1.0] * 8}, False),     # three, but no PM
+    ({"pm2_5": [40.0] * 24, "no2": [40.0] * 24}, False),                    # PM, but only two
+])
 def test_naqi_validity_rules(hist, valid):
     r = pa.compute_naqi(hist)
     assert r["valid"] is valid
@@ -154,14 +130,8 @@ def test_naqi_validity_rules(hist, valid):
 
 def test_naqi_empty_history():
     r = pa.compute_naqi({})
-    assert r == {
-        "value": None,
-        "valid": False,
-        "sub_indices": {},
-        "averages": {},
-        "dominant_pollutant": None,
-        "category": None,
-    }
+    assert r == {"value": None, "valid": False, "sub_indices": {}, "averages": {}, "dominant_pollutant": None,
+                 "category": None}
 
 
 def test_naqi_dominant_is_highest_sub_index():
@@ -205,13 +175,8 @@ def test_trend_zero_prior_is_unknown():
 
 def test_trend_custom_window():
     r = pa.trend([50, 50, 100, 100], window=2)
-    assert r == {
-        "direction": "rising",
-        "change_pct": 100.0,
-        "window_hours": 2,
-        "recent_mean": 100.0,
-        "prior_mean": 50.0,
-    }
+    assert r == {"direction": "rising", "change_pct": 100.0, "window_hours": 2, "recent_mean": 100.0,
+                 "prior_mean": 50.0}
 
 
 # --------------------------------------------------------------------------- forecast_outlook
@@ -223,16 +188,13 @@ def test_forecast_outlook_unknown_without_data():
     assert pa.forecast_outlook(100, [None, None])["direction"] == "unknown"
 
 
-@pytest.mark.parametrize(
-    "future, direction, change",
-    [
-        ([120, 130, 140], "worsening", 30.0),
-        ([80, 80, 80], "improving", -20.0),
-        ([110, 110], "similar", 10.0),
-        ([114, 114], "similar", 14.0),
-        ([84, 84], "improving", -16.0),
-    ],
-)
+@pytest.mark.parametrize("future, direction, change", [
+    ([120, 130, 140], "worsening", 30.0),
+    ([80, 80, 80], "improving", -20.0),
+    ([110, 110], "similar", 10.0),
+    ([114, 114], "similar", 14.0),
+    ([84, 84], "improving", -16.0),
+])
 def test_forecast_outlook_direction(future, direction, change):
     r = pa.forecast_outlook(100, future)
     assert r["direction"] == direction
@@ -259,20 +221,17 @@ def test_forecast_outlook_respects_horizon():
 # --------------------------------------------------------------------------- dispersion
 
 
-@pytest.mark.parametrize(
-    "wind, blh, level",
-    [
-        (3, None, "poor"),
-        (3, 200, "poor"),
-        (3, 800, "limited"),
-        (20, 200, "limited"),
-        (None, 200, "limited"),
-        (5, 800, "moderate"),  # 5 km/h is no longer "poor wind"
-        (11.9, 300, "moderate"),  # 300 m is no longer a shallow layer
-        (12, 800, "good"),
-        (None, 800, "good"),
-    ],
-)
+@pytest.mark.parametrize("wind, blh, level", [
+    (3, None, "poor"),
+    (3, 200, "poor"),
+    (3, 800, "limited"),
+    (20, 200, "limited"),
+    (None, 200, "limited"),
+    (5, 800, "moderate"),      # 5 km/h is no longer "poor wind"
+    (11.9, 300, "moderate"),   # 300 m is no longer a shallow layer
+    (12, 800, "good"),
+    (None, 800, "good"),
+])
 def test_dispersion_levels_at_thresholds(wind, blh, level):
     r = pa.dispersion(wind, blh)
     assert r["level"] == level
@@ -299,8 +258,8 @@ def test_best_windows_skips_windows_containing_none():
 
 def test_best_windows_limited_to_daytime():
     vals = [100.0] * 24
-    vals[5] = 1.0  # before 06:00
-    vals[21] = 1.0  # 21:00-22:00 ends after day_end
+    vals[5] = 1.0    # before 06:00
+    vals[21] = 1.0   # 21:00-22:00 ends after day_end
     vals[20] = 50.0  # 20:00-21:00 is allowed
     w = pa.best_windows(TIMES_24, vals, 1)
     assert w[0]["start"] == "2026-11-20T20:00"
@@ -324,18 +283,10 @@ def test_best_windows_duration_longer_than_series():
 # --------------------------------------------------------------------------- severity_level
 
 
-@pytest.mark.parametrize(
-    "aqi, level",
-    [
-        (None, "unknown"),
-        (0, "low"),
-        (75, "low"),
-        (150, "moderate"),
-        (250, "elevated"),
-        (350, "high"),
-        (450, "severe"),
-    ],
-)
+@pytest.mark.parametrize("aqi, level", [
+    (None, "unknown"), (0, "low"), (75, "low"), (150, "moderate"), (250, "elevated"), (350, "high"),
+    (450, "severe"),
+])
 def test_severity_level(aqi, level):
     assert pa.severity_level(aqi) == level
 
@@ -365,7 +316,8 @@ def _snap(aqi, cat_key, *, trend=None, outlook=None, dispersion=None, is_demo=Fa
 
 
 RISING = {"direction": "rising", "change_pct": 30.0, "window_hours": 3, "recent_mean": 130.0, "prior_mean": 100.0}
-FALLING = {"direction": "falling", "change_pct": -35.0, "window_hours": 3, "recent_mean": 65.0, "prior_mean": 100.0}
+FALLING = {"direction": "falling", "change_pct": -35.0, "window_hours": 3, "recent_mean": 65.0,
+           "prior_mean": 100.0}
 
 
 def test_bump_never_reaches_critical():
@@ -374,16 +326,10 @@ def test_bump_never_reaches_critical():
     assert rd.bump("high") == "high"
 
 
-@pytest.mark.parametrize(
-    "profile, expected",
-    [
-        (None, False),
-        ({}, False),
-        ({"family_context": {"children": False}}, False),
-        ({"family_context": {"older_adults": True}}, True),
-        ({"family_context": {"outdoor_workers": 1}}, True),
-    ],
-)
+@pytest.mark.parametrize("profile, expected", [
+    (None, False), ({}, False), ({"family_context": {"children": False}}, False),
+    ({"family_context": {"older_adults": True}}, True), ({"family_context": {"outdoor_workers": 1}}, True),
+])
 def test_has_sensitive_members(profile, expected):
     assert rd.has_sensitive_members(profile) is expected
 
@@ -507,9 +453,8 @@ def test_feed_forecast_deterioration_only_on_transition():
 
 def test_feed_poor_dispersion_only_on_transition():
     poor = {"level": "poor", "explanation": "Trapped."}
-    events = rd.feed_events(
-        _snap(150, "moderate", dispersion={"level": "moderate"}), _snap(150, "moderate", dispersion=poor)
-    )
+    events = rd.feed_events(_snap(150, "moderate", dispersion={"level": "moderate"}),
+                            _snap(150, "moderate", dispersion=poor))
     assert [(e["type"], e["severity"], e["detail"]) for e in events] == [("poor_dispersion", "low", "Trapped.")]
     assert events[0]["dedup"] == "disp:28.61_77.21:2026-11-19"
     assert rd.feed_events(_snap(150, "moderate", dispersion=poor), _snap(150, "moderate", dispersion=poor)) == []

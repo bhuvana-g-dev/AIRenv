@@ -6,12 +6,10 @@ NO2 and SO2 and 8-hour averages for CO and O3. We compute those averages from
 hourly values when enough hours are available, and report which averaging
 period was actually used.
 """
-
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
-from enum import IntEnum
 from statistics import mean
 from typing import Any
 
@@ -28,68 +26,21 @@ BREAKPOINTS: dict[str, list[float]] = {
 INDEX_BANDS = [(0, 50), (51, 100), (101, 200), (201, 300), (301, 400), (401, 500)]
 AVERAGING_HOURS = {"pm10": 24, "pm2_5": 24, "no2": 24, "so2": 24, "co": 8, "o3": 8}
 MIN_HOURS = {24: 16, 8: 6}
-NAQI_MAX = 500
-# A NAQI is "valid" (complete) with PM2.5 or PM10 plus at least this many pollutants in total (CPCB rule).
-MIN_VALID_POLLUTANTS = 3
 
-# Hour-over-hour change (%) beyond which a trend is rising/falling, and a 12/24-h outlook worsening/improving.
-TREND_CHANGE_PCT = 10
-OUTLOOK_CHANGE_PCT = 15
-# Dispersion thresholds: near-calm wind, light wind and a shallow boundary (mixing) layer.
-CALM_WIND_KMH = 5
-LIGHT_WIND_KMH = 12
-SHALLOW_MIXING_LAYER_M = 300
-
-
-class Severity(IntEnum):
-    """The ``severity`` rank of each NAQI category in ``CATEGORIES``."""
-
-    GOOD = 0
-    SATISFACTORY = 1
-    MODERATE = 2
-    POOR = 3
-    VERY_POOR = 4
-    SEVERE = 5
-
-
-CATEGORIES: list[dict[str, Any]] = [
-    {"key": "good", "label": "Good", "range": [0, 50], "severity": 0, "health": "Minimal impact."},
-    {
-        "key": "satisfactory",
-        "label": "Satisfactory",
-        "range": [51, 100],
-        "severity": 1,
-        "health": "Minor breathing discomfort to sensitive people.",
-    },
-    {
-        "key": "moderate",
-        "label": "Moderate",
-        "range": [101, 200],
-        "severity": 2,
-        "health": "Breathing discomfort to people with lung disease such as asthma, and discomfort to "
-        "people with heart disease, children and older adults.",
-    },
-    {
-        "key": "poor",
-        "label": "Poor",
-        "range": [201, 300],
-        "severity": 3,
-        "health": "Breathing discomfort to most people on prolonged exposure.",
-    },
-    {
-        "key": "very_poor",
-        "label": "Very Poor",
-        "range": [301, 400],
-        "severity": 4,
-        "health": "Respiratory illness on prolonged exposure.",
-    },
-    {
-        "key": "severe",
-        "label": "Severe",
-        "range": [401, 500],
-        "severity": 5,
-        "health": "Affects healthy people and seriously impacts those with existing diseases.",
-    },
+CATEGORIES = [
+    {"key": "good", "label": "Good", "range": [0, 50], "severity": 0,
+     "health": "Minimal impact."},
+    {"key": "satisfactory", "label": "Satisfactory", "range": [51, 100], "severity": 1,
+     "health": "Minor breathing discomfort to sensitive people."},
+    {"key": "moderate", "label": "Moderate", "range": [101, 200], "severity": 2,
+     "health": "Breathing discomfort to people with lung disease such as asthma, and discomfort to "
+               "people with heart disease, children and older adults."},
+    {"key": "poor", "label": "Poor", "range": [201, 300], "severity": 3,
+     "health": "Breathing discomfort to most people on prolonged exposure."},
+    {"key": "very_poor", "label": "Very Poor", "range": [301, 400], "severity": 4,
+     "health": "Respiratory illness on prolonged exposure."},
+    {"key": "severe", "label": "Severe", "range": [401, 500], "severity": 5,
+     "health": "Affects healthy people and seriously impacts those with existing diseases."},
 ]
 HEALTH_SOURCE = "CPCB National Air Quality Index health statements"
 
@@ -108,9 +59,9 @@ def sub_index(pollutant: str, concentration: float | None) -> int | None:
             c = min(concentration, hi_c)
             span = hi_c - lo_c
             value = lo_i + (hi_i - lo_i) * ((c - lo_c) / span if span else 0)
-            return round(min(value, NAQI_MAX))
+            return round(min(value, 500))
         lo_c = hi_c
-    return NAQI_MAX
+    return 500
 
 
 def category_for(aqi: float | None) -> dict[str, Any] | None:
@@ -143,8 +94,11 @@ def averaged(pollutant: str, hourly_values: Sequence[float | None]) -> AveragedC
     return AveragedConcentration(latest[0] if latest else None, len(latest), 1)
 
 
-def _sub_indices(history: Mapping[str, Sequence[float | None]]) -> tuple[dict[str, int], dict[str, dict[str, Any]]]:
-    """Per-pollutant sub-index and the averaged concentration it was computed from."""
+def compute_naqi(history: dict[str, Sequence[float | None]]) -> dict[str, Any]:
+    """history: pollutant -> hourly concentrations up to now (oldest first).
+
+    Concentrations in µg/m³ except CO which must already be mg/m³.
+    """
     subs: dict[str, int] = {}
     averages: dict[str, dict[str, Any]] = {}
     for pol in BREAKPOINTS:
@@ -156,26 +110,11 @@ def _sub_indices(history: Mapping[str, Sequence[float | None]]) -> tuple[dict[st
         if idx is not None:
             subs[pol] = idx
             averages[pol] = {"value": avg.value, "hours_used": avg.hours_used, "period_hours": avg.period_hours}
-    return subs, averages
-
-
-def compute_naqi(history: Mapping[str, Sequence[float | None]]) -> dict[str, Any]:
-    """history: pollutant -> hourly concentrations up to now (oldest first).
-
-    Concentrations in µg/m³ except CO which must already be mg/m³.
-    """
-    subs, averages = _sub_indices(history)
     has_pm = "pm2_5" in subs or "pm10" in subs
-    valid = has_pm and len(subs) >= MIN_VALID_POLLUTANTS
+    valid = has_pm and len(subs) >= 3
     if not subs:
-        return {
-            "value": None,
-            "valid": False,
-            "sub_indices": {},
-            "averages": {},
-            "dominant_pollutant": None,
-            "category": None,
-        }
+        return {"value": None, "valid": False, "sub_indices": {}, "averages": {}, "dominant_pollutant": None,
+                "category": None}
     dominant = max(subs, key=lambda k: subs[k])
     value = subs[dominant]
     cat = category_for(value)
@@ -196,7 +135,7 @@ def compute_naqi(history: Mapping[str, Sequence[float | None]]) -> dict[str, Any
     }
 
 
-def hourly_aqi_series(hourly: Mapping[str, Sequence[float | None]], times: list[str]) -> list[int | None]:
+def hourly_aqi_series(hourly: dict[str, list[float | None]], times: list[str]) -> list[int | None]:
     """Rolling NAQI value for every hour (uses trailing averaging windows)."""
     out: list[int | None] = []
     for i in range(len(times)):
@@ -211,18 +150,13 @@ def trend(values: Sequence[float | None], window: int = 3) -> dict[str, Any]:
     if len(clean) < window * 2:
         return {"direction": "unknown", "change_pct": None, "window_hours": window}
     recent = mean(clean[-window:])
-    prior = mean(clean[-2 * window : -window])
+    prior = mean(clean[-2 * window: -window])
     if prior <= 0:
         return {"direction": "unknown", "change_pct": None, "window_hours": window}
     change = (recent - prior) / prior * 100
-    direction = "rising" if change > TREND_CHANGE_PCT else "falling" if change < -TREND_CHANGE_PCT else "steady"
-    return {
-        "direction": direction,
-        "change_pct": round(change, 1),
-        "window_hours": window,
-        "recent_mean": round(recent, 1),
-        "prior_mean": round(prior, 1),
-    }
+    direction = "rising" if change > 10 else "falling" if change < -10 else "steady"
+    return {"direction": direction, "change_pct": round(change, 1), "window_hours": window,
+            "recent_mean": round(recent, 1), "prior_mean": round(prior, 1)}
 
 
 def forecast_outlook(current: float | None, future: Sequence[float | None], hours: int = 12) -> dict[str, Any]:
@@ -232,26 +166,18 @@ def forecast_outlook(current: float | None, future: Sequence[float | None], hour
     peak = max(clean)
     avg = mean(clean)
     change = (avg - current) / current * 100 if current else 0
-    direction = (
-        "worsening" if change > OUTLOOK_CHANGE_PCT else "improving" if change < -OUTLOOK_CHANGE_PCT else "similar"
-    )
-    return {
-        "direction": direction,
-        "peak": round(peak, 1),
-        "peak_index": list(future[:hours]).index(peak),
-        "mean": round(avg, 1),
-        "change_pct": round(change, 1),
-        "hours": hours,
-    }
+    direction = "worsening" if change > 15 else "improving" if change < -15 else "similar"
+    return {"direction": direction, "peak": round(peak, 1), "peak_index": list(future[:hours]).index(peak),
+            "mean": round(avg, 1), "change_pct": round(change, 1), "hours": hours}
 
 
 def dispersion(wind_speed_kmh: float | None, boundary_layer_m: float | None) -> dict[str, Any]:
     """Qualitative dispersion potential. Low wind and a shallow mixing layer trap pollutants near the ground."""
     if wind_speed_kmh is None and boundary_layer_m is None:
         return {"level": "unknown", "explanation": "Wind and mixing-height data unavailable."}
-    poor_wind = wind_speed_kmh is not None and wind_speed_kmh < CALM_WIND_KMH
-    poor_blh = boundary_layer_m is not None and boundary_layer_m < SHALLOW_MIXING_LAYER_M
-    fair_wind = wind_speed_kmh is not None and wind_speed_kmh < LIGHT_WIND_KMH
+    poor_wind = wind_speed_kmh is not None and wind_speed_kmh < 5
+    poor_blh = boundary_layer_m is not None and boundary_layer_m < 300
+    fair_wind = wind_speed_kmh is not None and wind_speed_kmh < 12
     if poor_wind and (poor_blh or boundary_layer_m is None):
         level = "poor"
         text = "Near-calm winds and a shallow mixing layer limit how quickly pollutants disperse."
@@ -264,30 +190,24 @@ def dispersion(wind_speed_kmh: float | None, boundary_layer_m: float | None) -> 
     else:
         level = "good"
         text = "Stronger winds help disperse local emissions."
-    return {"level": level, "explanation": text, "wind_speed_kmh": wind_speed_kmh, "boundary_layer_m": boundary_layer_m}
+    return {"level": level, "explanation": text, "wind_speed_kmh": wind_speed_kmh,
+            "boundary_layer_m": boundary_layer_m}
 
 
-def best_windows(
-    times: Sequence[str],
-    values: Sequence[float | None],
-    duration_hours: int,
-    day_start: int = 6,
-    day_end: int = 21,
-    limit: int = 3,
-) -> list[dict[str, Any]]:
+def best_windows(times: list[str], values: list[float | None], duration_hours: int,
+                 day_start: int = 6, day_end: int = 21, limit: int = 3) -> list[dict[str, Any]]:
     """Lowest-mean contiguous windows within daytime hours. Times are local ISO strings."""
     candidates: list[dict[str, Any]] = []
     for i in range(len(times) - duration_hours + 1):
-        window_vals = _clean(values[i : i + duration_hours])
-        if len(window_vals) < duration_hours:
-            continue  # a missing hour inside the window
+        window_vals = values[i: i + duration_hours]
+        if any(v is None for v in window_vals):
+            continue
         hour = int(times[i][11:13])
         end_hour = hour + duration_hours
         if hour < day_start or end_hour > day_end:
             continue
-        candidates.append(
-            {"start": times[i], "end_index": i + duration_hours, "start_index": i, "mean": round(mean(window_vals), 1)}
-        )
+        candidates.append({"start": times[i], "end_index": i + duration_hours, "start_index": i,
+                           "mean": round(mean(window_vals), 1)})  # type: ignore[arg-type]
     candidates.sort(key=lambda c: c["mean"])
     chosen: list[dict[str, Any]] = []
     for c in candidates:
@@ -302,15 +222,4 @@ def severity_level(aqi: int | None) -> str:
     cat = category_for(aqi)
     if cat is None:
         return "unknown"
-    return SEVERITY_LEVELS[cat["severity"]]
-
-
-# Plain-language level for each category severity, used for event risk and the dashboard badge.
-SEVERITY_LEVELS = {
-    Severity.GOOD: "low",
-    Severity.SATISFACTORY: "low",
-    Severity.MODERATE: "moderate",
-    Severity.POOR: "elevated",
-    Severity.VERY_POOR: "high",
-    Severity.SEVERE: "severe",
-}
+    return {0: "low", 1: "low", 2: "moderate", 3: "elevated", 4: "high", 5: "severe"}[cat["severity"]]

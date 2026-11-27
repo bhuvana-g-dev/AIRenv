@@ -3,7 +3,6 @@
 Personal exposure (inhaled dose) is separate from emissions. Neither is presented
 as a change in neighbourhood air quality.
 """
-
 from __future__ import annotations
 
 from statistics import mean
@@ -28,32 +27,18 @@ TRANSPORT_FACTORS: dict[str, dict[str, Any]] = {
     "cng_car": {"label": "CNG car", "kg_per_km": 0.140, "per": "vehicle"},
     "two_wheeler": {"label": "Petrol two-wheeler", "kg_per_km": 0.113, "per": "vehicle"},
     "auto_rickshaw": {"label": "Auto-rickshaw (CNG)", "kg_per_km": 0.10, "per": "vehicle"},
-    "electric_car": {
-        "label": "Electric car (Indian grid)",
-        "kg_per_km": round(0.15 * GRID_FACTOR_IN, 3),
-        "per": "vehicle",
-    },
-    "electric_two_wheeler": {
-        "label": "Electric two-wheeler (Indian grid)",
-        "kg_per_km": round(0.035 * GRID_FACTOR_IN, 3),
-        "per": "vehicle",
-    },
+    "electric_car": {"label": "Electric car (Indian grid)", "kg_per_km": round(0.15 * GRID_FACTOR_IN, 3),
+                     "per": "vehicle"},
+    "electric_two_wheeler": {"label": "Electric two-wheeler (Indian grid)",
+                             "kg_per_km": round(0.035 * GRID_FACTOR_IN, 3), "per": "vehicle"},
     "bus": {"label": "City bus", "kg_per_km": 0.10, "per": "passenger"},
     "metro": {"label": "Metro / rail", "kg_per_km": 0.035, "per": "passenger"},
     "walk_cycle": {"label": "Walking or cycling", "kg_per_km": 0.0, "per": "passenger"},
 }
-TRANSPORT_SOURCE = (
-    "Approximate factors based on UK DESNZ 2024 GHG conversion factors; electric modes use "
-    "CEA CO2 Baseline Database v19 grid factor (0.716 kg/kWh)."
-)
+TRANSPORT_SOURCE = ("Approximate factors based on UK DESNZ 2024 GHG conversion factors; electric modes use "
+                    "CEA CO2 Baseline Database v19 grid factor (0.716 kg/kWh).")
 LPG_KG_CO2_PER_KG = 2.985  # IPCC 2006 default: 63.1 t CO2/TJ × 47.3 TJ/kt
 UNCERTAINTY = 0.25
-# Energy savings use a narrower band (grid-mix variation and metering differences).
-ENERGY_UNCERTAINTY = 0.15
-WEEKS_PER_MONTH = 4.345
-WEEKS_PER_YEAR = 52.14
-# Exposure comparisons look this far into the forecast.
-EXPOSURE_WINDOW_HOURS = 48
 
 
 class ExposureRequest(BaseModel):
@@ -76,47 +61,28 @@ class EnergyRequest(BaseModel):
     lpg_kg_saved_per_month: float = Field(0, ge=0, le=500)
 
 
-def _exposure_assumptions(rate: float, req: ExposureRequest) -> list[str]:
-    return [
-        f"Inhaled PM2.5 dose = outdoor PM2.5 concentration × inhalation rate ({rate} m³/h for "
-        f"{req.intensity} activity) × duration ({req.activity_hours} h).",
-        "Uses the CAMS model forecast for your grid cell; actual street-level concentrations vary.",
-        "Assumes the activity happens outdoors for the full duration. Indoor air is not measured.",
-        "Adult inhalation rates; children breathe more air per kg of body weight.",
-        "This compares exposure only. It does not change the air quality in your area.",
-    ]
-
-
-def _planned_index(future_times: list[str], planned_start: str | None) -> int:
-    """Index of the requested start hour in the forecast window; defaults to now."""
-    if not planned_start:
-        return 0
-    prefix = planned_start[:13]
-    return next((i for i, t in enumerate(future_times) if t[:13] == prefix), 0)
-
-
-def exposure_comparison(
-    times: list[str], pm25: list[float | None], now_index: int, req: ExposureRequest
-) -> dict[str, Any]:
+def exposure_comparison(times: list[str], pm25: list[float | None], now_index: int,
+                        req: ExposureRequest) -> dict[str, Any]:
     hours = max(1, round(req.activity_hours))
     rate = INHALATION_RATES[req.intensity]
-    future_times = times[now_index : now_index + EXPOSURE_WINDOW_HOURS]
-    future_vals = pm25[now_index : now_index + EXPOSURE_WINDOW_HOURS]
+    future_times = times[now_index: now_index + 48]
+    future_vals = pm25[now_index: now_index + 48]
 
     def dose_at(start_i: int) -> dict[str, Any] | None:
-        vals = [v for v in future_vals[start_i : start_i + hours] if v is not None]
-        if len(vals) < hours:
-            return None  # window runs past the forecast or has a missing hour
-        conc = mean(vals)
-        return {
-            "start": future_times[start_i],
-            "mean_pm2_5": round(conc, 1),
-            "inhaled_ug": round(conc * rate * req.activity_hours, 1),
-            "sub_index": pa.sub_index("pm2_5", conc),
-        }
+        vals = future_vals[start_i: start_i + hours]
+        if len(vals) < hours or any(v is None for v in vals):
+            return None
+        conc = mean(vals)  # type: ignore[arg-type]
+        return {"start": future_times[start_i], "mean_pm2_5": round(conc, 1),
+                "inhaled_ug": round(conc * rate * req.activity_hours, 1),
+                "sub_index": pa.sub_index("pm2_5", conc)}
 
-    planned = dose_at(_planned_index(future_times, req.planned_start))
-    windows = pa.best_windows(future_times, future_vals, hours)
+    planned_i = 0
+    if req.planned_start:
+        prefix = req.planned_start[:13]
+        planned_i = next((i for i, t in enumerate(future_times) if t[:13] == prefix), 0)
+    planned = dose_at(planned_i)
+    windows = pa.best_windows(future_times, future_vals, hours)  # type: ignore[arg-type]
     alternatives = [d for d in (dose_at(w["start_index"]) for w in windows) if d]
     best = alternatives[0] if alternatives else None
     reduction = None
@@ -128,7 +94,14 @@ def exposure_comparison(
         "best": best,
         "reduction_pct": reduction,
         "inhalation_rate_m3_per_h": rate,
-        "assumptions": _exposure_assumptions(rate, req),
+        "assumptions": [
+            f"Inhaled PM2.5 dose = outdoor PM2.5 concentration × inhalation rate ({rate} m³/h for "
+            f"{req.intensity} activity) × duration ({req.activity_hours} h).",
+            "Uses the CAMS model forecast for your grid cell; actual street-level concentrations vary.",
+            "Assumes the activity happens outdoors for the full duration. Indoor air is not measured.",
+            "Adult inhalation rates; children breathe more air per kg of body weight.",
+            "This compares exposure only. It does not change the air quality in your area.",
+        ],
         "sources": [INHALATION_SOURCE, "Open-Meteo Air Quality API (CAMS) forecast"],
         "uncertainty": "Forecast concentrations carry substantial uncertainty, especially beyond 24 hours.",
     }
@@ -157,11 +130,8 @@ def trip_emissions(req: TripRequest) -> dict[str, Any]:
         "km_per_week": round(km_week, 1),
         "baseline_kg_per_week": round(base, 2),
         "alternative_kg_per_week": round(alt, 2),
-        "avoided_kg": {
-            "week": band(avoided_week),
-            "month": band(avoided_week * WEEKS_PER_MONTH),
-            "year": band(avoided_week * WEEKS_PER_YEAR),
-        },
+        "avoided_kg": {"week": band(avoided_week), "month": band(avoided_week * 4.345),
+                       "year": band(avoided_week * 52.14)},
         "factors": {
             "baseline": {**TRANSPORT_FACTORS[req.baseline_mode], "occupants": req.baseline_occupants},
             "alternative": {**TRANSPORT_FACTORS[req.alternative_mode], "occupants": req.alternative_occupants},
@@ -184,11 +154,8 @@ def energy_emissions(req: EnergyRequest) -> dict[str, Any]:
     return {
         "electricity_kg_per_month": round(elec, 1),
         "lpg_kg_per_month": round(lpg, 1),
-        "total_kg_per_month": {
-            "estimate": round(total, 1),
-            "low": round(total * (1 - ENERGY_UNCERTAINTY), 1),
-            "high": round(total * (1 + ENERGY_UNCERTAINTY), 1),
-        },
+        "total_kg_per_month": {"estimate": round(total, 1), "low": round(total * 0.85, 1),
+                               "high": round(total * 1.15, 1)},
         "total_kg_per_year": round(total * 12, 1),
         "methodology": [
             f"Electricity: kWh saved × {GRID_FACTOR_IN} kg CO₂/kWh (CEA CO₂ Baseline Database v19, Indian grid).",
@@ -211,10 +178,6 @@ def community_emissions(records: list[dict[str, Any]]) -> dict[str, Any]:
             total += (_per_passenger(base, 1) - _per_passenger(alt, r.get("occupants") or 1)) * km
             used += 1
     a, b = total * (1 - UNCERTAINTY), total * (1 + UNCERTAINTY)
-    return {
-        "estimate_kg": round(total, 1),
-        "low_kg": round(min(a, b), 1),
-        "high_kg": round(max(a, b), 1),
-        "records_used": used,
-        "note": "Estimated from verified records with reported distances; not a measurement.",
-    }
+    return {"estimate_kg": round(total, 1), "low_kg": round(min(a, b), 1),
+            "high_kg": round(max(a, b), 1), "records_used": used,
+            "note": "Estimated from verified records with reported distances; not a measurement."}
