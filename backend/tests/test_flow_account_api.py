@@ -1,4 +1,5 @@
 """Account API flows: export, deletion, notifications, Telegram linking and the SSE stream."""
+
 import asyncio
 import time
 from datetime import UTC, datetime, timedelta
@@ -36,9 +37,17 @@ def client(sample_bundle, monkeypatch):
 
 
 def _note(nid, uid=LOCAL_UID, read=False, priority=2, created=None, severity="medium"):
-    doc = {"uid": uid, "key": nid, "category": "forecast", "severity": severity, "priority": priority,
-           "title": f"Note {nid}", "message": "m", "read": read,
-           "created_at": created or datetime.now(UTC).isoformat()}
+    doc = {
+        "uid": uid,
+        "key": nid,
+        "category": "forecast",
+        "severity": severity,
+        "priority": priority,
+        "title": f"Note {nid}",
+        "message": "m",
+        "read": read,
+        "created_at": created or datetime.now(UTC).isoformat(),
+    }
     asyncio.run(get_store().set("notifications", nid, doc))
     return doc
 
@@ -48,6 +57,7 @@ def _get(coll, doc_id):
 
 
 # ----------------------------------------------------------------------------- profile data
+
 
 def test_export_contains_profile_and_own_notifications(client):
     _note("mine")
@@ -73,6 +83,7 @@ def test_delete_my_data_removes_profile_notifications_and_link_codes(client):
 
 # ----------------------------------------------------------------------------- notifications
 
+
 def test_notifications_list_unread_first_then_priority(client):
     now = datetime.now(UTC)
     _note("old-read", read=True, priority=4, created=(now - timedelta(hours=3)).isoformat())
@@ -95,8 +106,7 @@ def test_mark_read_and_read_all(client):
     assert client.post("/api/notifications/read-all").json() == {"updated": 0}
 
 
-@pytest.mark.parametrize("method, path", [("post", "/api/notifications/{}/read"),
-                                          ("delete", "/api/notifications/{}")])
+@pytest.mark.parametrize("method, path", [("post", "/api/notifications/{}/read"), ("delete", "/api/notifications/{}")])
 def test_other_users_notification_is_not_found(client, method, path):
     _note("foreign", uid="someone")
     for nid in ("foreign", "missing"):
@@ -132,8 +142,11 @@ def test_test_notification_delivers_via_telegram_when_linked(client, monkeypatch
     monkeypatch.setattr(get_settings(), "telegram_bot_token", "123:abc")
     monkeypatch.setattr(get_settings(), "telegram_mode", "polling")
     prefs = client.get("/api/me").json()["notification_prefs"]
-    asyncio.run(get_store().update("users", LOCAL_UID, {"notification_prefs": {**prefs, "telegram": True},
-                                                        "telegram": {"chat_id": 4242}}))
+    asyncio.run(
+        get_store().update(
+            "users", LOCAL_UID, {"notification_prefs": {**prefs, "telegram": True}, "telegram": {"chat_id": 4242}}
+        )
+    )
     doc = client.post("/api/notifications/test").json()
     assert doc["delivery"]["telegram"] == "sent"
     assert sent == [(4242, "*Test notification*\nDelivery check from AIRenv settings. No action needed.")]
@@ -141,13 +154,13 @@ def test_test_notification_delivers_via_telegram_when_linked(client, monkeypatch
 
 def test_test_notification_without_profile_404(client, monkeypatch):
     monkeypatch.setattr(get_settings(), "auth_mode", "firebase")
-    app.dependency_overrides[get_current_user] = lambda: CurrentUser(uid="ghost", role="member",
-                                                                     auth_mode="firebase")
+    app.dependency_overrides[get_current_user] = lambda: CurrentUser(uid="ghost", role="member", auth_mode="firebase")
     r = client.post("/api/notifications/test")
     assert r.status_code == 404 and r.json()["detail"] == "Profile not found"
 
 
 # ----------------------------------------------------------------------------- telegram
+
 
 def test_link_code_503_without_bot_token(client, monkeypatch):
     monkeypatch.setattr(get_settings(), "telegram_bot_token", "")
@@ -161,8 +174,12 @@ def test_link_code_when_configured(client, monkeypatch):
 
     async def fake_create(uid):
         calls.append(uid)
-        return {"code": "C0DE", "expires_at": "2026-11-19T10:15:00+00:00",
-                "deep_link": "https://t.me/airenv_bot?start=C0DE", "bot_username": "airenv_bot"}
+        return {
+            "code": "C0DE",
+            "expires_at": "2026-11-19T10:15:00+00:00",
+            "deep_link": "https://t.me/airenv_bot?start=C0DE",
+            "bot_username": "airenv_bot",
+        }
 
     monkeypatch.setattr(tg, "create_link_code", fake_create)
     body = client.post("/api/telegram/link-code").json()
@@ -185,6 +202,7 @@ def test_telegram_status_route(client, monkeypatch):
 
 
 # ----------------------------------------------------------------------------- SSE stream
+
 
 def _disconnect_after(monkeypatch, checks, on_first=None):
     """Make Request.is_disconnected report a disconnect after `checks` checks."""
@@ -218,8 +236,7 @@ def test_stream_with_ticket_adds_user_topic_and_consumes_ticket(client, monkeypa
 
     _disconnect_after(monkeypatch, 1, on_first=publish)
     r = client.get("/api/stream", params={"location_id": "28.61_77.21", "ticket": ticket})
-    assert r.text == ('event: ready\ndata: {"topics": 2}\n\n'
-                      'event: notification.created\ndata: {"id": "n1"}\n\n')
+    assert r.text == ('event: ready\ndata: {"topics": 2}\n\nevent: notification.created\ndata: {"id": "n1"}\n\n')
     assert ticket not in account_api._tickets
 
 

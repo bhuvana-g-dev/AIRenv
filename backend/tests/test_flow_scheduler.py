@@ -1,4 +1,5 @@
 """Scheduler flows: tracked locations, refresh, community event assessment, run loop and retention."""
+
 import asyncio
 import contextlib
 import copy
@@ -23,8 +24,18 @@ FIXED_NOW = datetime(2026, 11, 19, 10, 0)
 
 @pytest.fixture(autouse=True)
 def sched_state(monkeypatch):
-    monkeypatch.setattr(scheduler, "state", {"last_run_at": None, "next_run_at": None, "last_duration_s": None,
-                                             "locations": 0, "last_errors": [], "runs": 0})
+    monkeypatch.setattr(
+        scheduler,
+        "state",
+        {
+            "last_run_at": None,
+            "next_run_at": None,
+            "last_duration_s": None,
+            "locations": 0,
+            "last_errors": [],
+            "runs": 0,
+        },
+    )
     monkeypatch.setattr(scheduler, "_task", None)
     monkeypatch.setattr(scheduler, "_last_prune", None)
     monkeypatch.setattr(cp, "local_now", lambda series: FIXED_NOW)
@@ -73,11 +84,13 @@ def _q(coll, filters=None):
 
 # ----------------------------------------------------------------------------- tracked locations
 
+
 def test_tracked_locations_default_only():
     locs = asyncio.run(scheduler.tracked_locations())
     s = get_settings()
     assert [(loc.id, loc.name, loc.country, loc.admin1) for loc in locs] == [
-        (f"{s.default_lat:.2f}_{s.default_lon:.2f}", s.default_location_name, "India", "Delhi")]
+        (f"{s.default_lat:.2f}_{s.default_lon:.2f}", s.default_location_name, "India", "Delhi")
+    ]
 
 
 def test_tracked_locations_merges_users_communities_and_groups():
@@ -90,8 +103,7 @@ def test_tracked_locations_merges_users_communities_and_groups():
     asyncio.run(store.set("users", "c", {"location": None}))
     asyncio.run(store.set("communities", "c1", {"location": mumbai.model_dump()}))
     asyncio.run(store.set("tg_groups", "g1", {"location": pune.model_dump()}))
-    asyncio.run(store.set("tg_groups", "bad1", {"location": {"id": "99.00_0.00", "name": "X", "lat": 999,
-                                                             "lon": 0}}))
+    asyncio.run(store.set("tg_groups", "bad1", {"location": {"id": "99.00_0.00", "name": "X", "lat": 999, "lon": 0}}))
     asyncio.run(store.set("tg_groups", "bad2", {"location": {"id": "1.00_1.00", "lat": 1, "lon": 1}}))
     asyncio.run(store.set("tg_groups", "noid", {"location": {"name": "No id", "lat": 1, "lon": 1}}))
     names = [loc.name for loc in asyncio.run(scheduler.tracked_locations())]
@@ -99,6 +111,7 @@ def test_tracked_locations_merges_users_communities_and_groups():
 
 
 # ----------------------------------------------------------------------------- refresh_location
+
 
 def test_first_refresh_publishes_monitoring_started_and_notifies_users(monkeypatch, sample_bundle, sent):
     loc = sample_bundle[0]
@@ -119,14 +132,16 @@ def test_first_refresh_publishes_monitoring_started_and_notifies_users(monkeypat
     assert calls == [(loc.id, {"force": True})]
     latest = asyncio.run(get_store().get("latest_snapshots", loc.id))
     assert latest["observed_local"] == "2026-11-19T10:00" and latest["aqi"]["value"] == snap["aqi"]["value"]
-    assert asyncio.run(get_store().get("history", f"{loc.id}_2026111910"))["pm2_5"] == \
-        snap["pollutants"]["pm2_5"]["value"]
+    assert (
+        asyncio.run(get_store().get("history", f"{loc.id}_2026111910"))["pm2_5"] == snap["pollutants"]["pm2_5"]["value"]
+    )
 
     feed = _q("feed")
     assert [f["type"] for f in feed] == ["monitoring_started"]
     assert feed[0]["title"] == "Monitoring started for Test City"
-    assert feed[0]["detail"] == (f"Estimated NAQI {snap['aqi']['value']} ({snap['aqi']['category']['label']}). "
-                                 "Source: Test model.")
+    assert feed[0]["detail"] == (
+        f"Estimated NAQI {snap['aqi']['value']} ({snap['aqi']['category']['label']}). Source: Test model."
+    )
 
     messages = []
     while not queue.empty():
@@ -149,8 +164,10 @@ def test_stale_refresh_publishes_source_unavailable_once(monkeypatch, sample_bun
     prev = copy.deepcopy(sample_bundle[1]["snapshot"])
     prev["errors"] = []
     asyncio.run(store.set("latest_snapshots", loc.id, prev))
-    errors = [{"provider": "Open-Meteo Air Quality", "message": "timed out"},
-              {"provider": "Open-Meteo Weather", "message": "HTTP 500"}]
+    errors = [
+        {"provider": "Open-Meteo Air Quality", "message": "timed out"},
+        {"provider": "Open-Meteo Weather", "message": "HTTP 500"},
+    ]
     bundle = _bundle(sample_bundle, status="stale", errors=errors)
     _serve(monkeypatch, bundle)
 
@@ -176,29 +193,58 @@ def test_stale_snapshot_without_previous_is_stored_normally(monkeypatch, sample_
 
 # ----------------------------------------------------------------------------- community events
 
+
 def _activity(title, date="2026-11-20", time="21:00", **extra):
-    return {"source": "manual", "kind": "activity", "title": title, "activity_type": "sports",
-            "intensity": "moderate", "outdoor": True, "date": date, "time": time, "duration_hours": 1,
-            "advisory": {"status": "none"}, **extra}
+    return {
+        "source": "manual",
+        "kind": "activity",
+        "title": title,
+        "activity_type": "sports",
+        "intensity": "moderate",
+        "outdoor": True,
+        "date": date,
+        "time": time,
+        "duration_hours": 1,
+        "advisory": {"status": "none"},
+        **extra,
+    }
 
 
 def test_assess_community_events_creates_pending_advisory_feed_and_admin_alert(sample_bundle, sent):
     loc, bundle = sample_bundle
     store = get_store()
     _user("adm", loc)
-    asyncio.run(store.set("communities", "c1", {"name": "Green Park", "type": "apartment",
-                                                "location": loc.model_dump(), "admin_uids": ["adm", "ghost"],
-                                                "member_uids": ["adm"]}))
+    asyncio.run(
+        store.set(
+            "communities",
+            "c1",
+            {
+                "name": "Green Park",
+                "type": "apartment",
+                "location": loc.model_dump(),
+                "admin_uids": ["adm", "ghost"],
+                "member_uids": ["adm"],
+            },
+        )
+    )
     far = make_location("Far", 10.0, 10.0)
-    asyncio.run(store.set("communities", "c2", {"name": "Far club", "type": "rwa", "location": far.model_dump(),
-                                                "admin_uids": ["adm"]}))
+    asyncio.run(
+        store.set(
+            "communities",
+            "c2",
+            {"name": "Far club", "type": "rwa", "location": far.model_dump(), "admin_uids": ["adm"]},
+        )
+    )
     e1 = asyncio.run(cs.add_event("c1", _activity("Evening football")))
     e2 = asyncio.run(cs.add_event("c1", _activity("Sent one", advisory={"status": "sent"})))
     e3 = asyncio.run(cs.add_event("c1", _activity("Dismissed one", advisory={"status": "dismissed"})))
     e4 = asyncio.run(cs.add_event("c1", {"kind": "concern", "title": "Burning", "advisory": {"status": "none"}}))
     e5 = asyncio.run(cs.add_event("c1", _activity("Indoor yoga", outdoor=False)))
-    e6 = asyncio.run(cs.add_event("c1", _activity("Already pending", time="22:00",
-                                                  advisory={"status": "pending", "text": "keep me"})))
+    e6 = asyncio.run(
+        cs.add_event(
+            "c1", _activity("Already pending", time="22:00", advisory={"status": "pending", "text": "keep me"})
+        )
+    )
     e7 = asyncio.run(cs.add_event("c2", _activity("Other place")))
 
     asyncio.run(scheduler._assess_community_events(loc, bundle))
@@ -232,8 +278,11 @@ def test_assess_community_events_creates_pending_advisory_feed_and_admin_alert(s
 def test_school_community_uses_school_audience(sample_bundle):
     loc, bundle = sample_bundle
     store = get_store()
-    asyncio.run(store.set("communities", "s1", {"name": "School", "type": "school", "location": loc.model_dump(),
-                                                "admin_uids": []}))
+    asyncio.run(
+        store.set(
+            "communities", "s1", {"name": "School", "type": "school", "location": loc.model_dump(), "admin_uids": []}
+        )
+    )
     ev = asyncio.run(cs.add_event("s1", _activity("PE class", time="17:00", intensity="high")))
     asyncio.run(scheduler._assess_community_events(loc, bundle))
     stored = asyncio.run(store.get("community_events", ev["id"]))
@@ -242,6 +291,7 @@ def test_school_community_uses_school_audience(sample_bundle):
 
 
 # ----------------------------------------------------------------------------- run_once / prune
+
 
 def test_run_once_records_errors_and_keeps_running(monkeypatch):
     locs = [make_location(n, lat, 77.0) for n, lat in (("Ok", 28.0), ("Down", 27.0), ("Broken", 26.0))]
@@ -310,6 +360,7 @@ def test_prune_swallows_storage_errors(monkeypatch):
 
 
 # ----------------------------------------------------------------------------- start / stop / loop
+
 
 def test_start_does_nothing_when_disabled(monkeypatch):
     monkeypatch.setattr(get_settings(), "scheduler_enabled", False)

@@ -1,4 +1,5 @@
 """Unit tests for impact calculations and historical analytics."""
+
 import asyncio
 from statistics import mean
 
@@ -13,11 +14,19 @@ from app.services import impact_calculator as ic
 
 
 def test_trip_vehicle_factor_is_shared_by_occupants_but_passenger_factor_is_not():
-    r = ic.trip_emissions(ic.TripRequest(baseline_mode="petrol_car", alternative_mode="metro", distance_km=10,
-                                         trips_per_week=5, baseline_occupants=2, alternative_occupants=4))
+    r = ic.trip_emissions(
+        ic.TripRequest(
+            baseline_mode="petrol_car",
+            alternative_mode="metro",
+            distance_km=10,
+            trips_per_week=5,
+            baseline_occupants=2,
+            alternative_occupants=4,
+        )
+    )
     assert r["km_per_week"] == 50
-    assert r["baseline_kg_per_week"] == pytest.approx(0.164 / 2 * 50, abs=0.005)   # 4.1
-    assert r["alternative_kg_per_week"] == pytest.approx(0.035 * 50, abs=0.005)    # 1.75, occupants ignored
+    assert r["baseline_kg_per_week"] == pytest.approx(0.164 / 2 * 50, abs=0.005)  # 4.1
+    assert r["alternative_kg_per_week"] == pytest.approx(0.035 * 50, abs=0.005)  # 1.75, occupants ignored
     week = r["avoided_kg"]["week"]
     assert week["estimate"] == pytest.approx(2.35, abs=0.005)
     assert week["low"] == pytest.approx(2.35 * 0.75, abs=0.006)
@@ -29,16 +38,24 @@ def test_trip_vehicle_factor_is_shared_by_occupants_but_passenger_factor_is_not(
 
 
 def test_trip_carpool_halves_per_person_emissions():
-    r = ic.trip_emissions(ic.TripRequest(baseline_mode="diesel_car", alternative_mode="diesel_car",
-                                         distance_km=20, trips_per_week=1, alternative_occupants=2))
+    r = ic.trip_emissions(
+        ic.TripRequest(
+            baseline_mode="diesel_car",
+            alternative_mode="diesel_car",
+            distance_km=20,
+            trips_per_week=1,
+            alternative_occupants=2,
+        )
+    )
     assert r["baseline_kg_per_week"] == pytest.approx(3.36, abs=0.005)
     assert r["alternative_kg_per_week"] == pytest.approx(1.68, abs=0.005)
     assert r["avoided_kg"]["week"]["estimate"] == pytest.approx(1.68, abs=0.005)
 
 
 def test_trip_walk_cycle_avoids_everything():
-    r = ic.trip_emissions(ic.TripRequest(baseline_mode="two_wheeler", alternative_mode="walk_cycle",
-                                         distance_km=4, trips_per_week=10))
+    r = ic.trip_emissions(
+        ic.TripRequest(baseline_mode="two_wheeler", alternative_mode="walk_cycle", distance_km=4, trips_per_week=10)
+    )
     assert r["alternative_kg_per_week"] == 0
     assert r["avoided_kg"]["week"]["estimate"] == r["baseline_kg_per_week"] == pytest.approx(4.52, abs=0.005)
 
@@ -51,22 +68,22 @@ def test_electric_mode_factors_use_indian_grid():
 @pytest.mark.parametrize("base, alt", [("rocket", "metro"), ("petrol_car", "teleport")])
 def test_trip_unknown_mode_raises(base, alt):
     with pytest.raises(ValueError, match="Unknown transport mode"):
-        ic.trip_emissions(ic.TripRequest(baseline_mode=base, alternative_mode=alt, distance_km=1,
-                                         trips_per_week=1))
+        ic.trip_emissions(ic.TripRequest(baseline_mode=base, alternative_mode=alt, distance_km=1, trips_per_week=1))
 
 
-@pytest.mark.parametrize("field, value", [("distance_km", 0), ("distance_km", 501), ("trips_per_week", 0),
-                                          ("baseline_occupants", 9)])
+@pytest.mark.parametrize(
+    "field, value", [("distance_km", 0), ("distance_km", 501), ("trips_per_week", 0), ("baseline_occupants", 9)]
+)
 def test_trip_request_validation(field, value):
-    kwargs = {"baseline_mode": "bus", "alternative_mode": "metro", "distance_km": 5, "trips_per_week": 2,
-              field: value}
+    kwargs = {"baseline_mode": "bus", "alternative_mode": "metro", "distance_km": 5, "trips_per_week": 2, field: value}
     with pytest.raises(ValidationError):
         ic.TripRequest(**kwargs)
 
 
 def test_trip_band_is_ordered_when_alternative_is_dirtier():
-    r = ic.trip_emissions(ic.TripRequest(baseline_mode="metro", alternative_mode="petrol_car", distance_km=10,
-                                         trips_per_week=5))
+    r = ic.trip_emissions(
+        ic.TripRequest(baseline_mode="metro", alternative_mode="petrol_car", distance_km=10, trips_per_week=5)
+    )
     week = r["avoided_kg"]["week"]
     assert week["estimate"] < 0
     assert week["low"] <= week["estimate"] <= week["high"]
@@ -105,8 +122,13 @@ def test_community_emissions_uses_only_verified_records_with_distance():
         {"verified": True, "baseline_mode": "petrol_car", "alternative_mode": "metro"},
         {"verified": True, "km_shifted": 0, "baseline_mode": "petrol_car", "alternative_mode": "metro"},
         {"verified": True, "km_shifted": 50, "baseline_mode": "hovercraft", "alternative_mode": "metro"},
-        {"verified": True, "km_shifted": 10, "baseline_mode": "petrol_car", "alternative_mode": "petrol_car",
-         "occupants": 2},
+        {
+            "verified": True,
+            "km_shifted": 10,
+            "baseline_mode": "petrol_car",
+            "alternative_mode": "petrol_car",
+            "occupants": 2,
+        },
     ]
     r = ic.community_emissions(records)
     assert r["records_used"] == 2
@@ -129,8 +151,9 @@ TIMES_48 = [f"2026-11-{20 + h // 24}T{h % 24:02d}:00" for h in range(48)]
 def test_exposure_planned_hour_with_missing_value():
     vals = [100.0] * 48
     vals[8] = None
-    r = ic.exposure_comparison(TIMES_48, vals, 0, ic.ExposureRequest(activity_hours=1,
-                                                                     planned_start="2026-11-20T08:00"))
+    r = ic.exposure_comparison(
+        TIMES_48, vals, 0, ic.ExposureRequest(activity_hours=1, planned_start="2026-11-20T08:00")
+    )
     assert r["planned"] is None
     assert r["reduction_pct"] is None
     assert r["best"] is not None
@@ -139,8 +162,9 @@ def test_exposure_planned_hour_with_missing_value():
 def test_exposure_planned_start_outside_range_uses_first_hour():
     vals = [100.0] * 48
     vals[0] = 80.0
-    r = ic.exposure_comparison(TIMES_48, vals, 0, ic.ExposureRequest(activity_hours=1, intensity="sedentary",
-                                                                     planned_start="2030-01-01T08:00"))
+    r = ic.exposure_comparison(
+        TIMES_48, vals, 0, ic.ExposureRequest(activity_hours=1, intensity="sedentary", planned_start="2030-01-01T08:00")
+    )
     assert r["planned"]["start"] == "2026-11-20T00:00"
     assert r["planned"]["inhaled_ug"] == 20.0  # 80 µg/m³ × 0.25 m³/h × 1 h
     assert r["inhalation_rate_m3_per_h"] == 0.25
@@ -148,8 +172,9 @@ def test_exposure_planned_start_outside_range_uses_first_hour():
 
 def test_exposure_fractional_hours():
     vals = [100.0] * 48
-    r = ic.exposure_comparison(TIMES_48, vals, 0, ic.ExposureRequest(activity_hours=1.5, intensity="light",
-                                                                     planned_start="2026-11-20T10:00"))
+    r = ic.exposure_comparison(
+        TIMES_48, vals, 0, ic.ExposureRequest(activity_hours=1.5, intensity="light", planned_start="2026-11-20T10:00")
+    )
     # The window spans round(1.5) = 2 hours, but the dose uses the real 1.5 h.
     assert r["planned"]["inhaled_ug"] == 108.0
     assert r["planned"]["mean_pm2_5"] == 100.0
@@ -164,7 +189,7 @@ def test_exposure_quarter_hour_uses_one_hour_window():
 
 def test_exposure_respects_now_index():
     vals = [200.0] * 48
-    vals[2] = 10.0   # in the past relative to now_index=6, must be ignored
+    vals[2] = 10.0  # in the past relative to now_index=6, must be ignored
     vals[15] = 50.0
     r = ic.exposure_comparison(TIMES_48, vals, 6, ic.ExposureRequest(activity_hours=1))
     assert r["planned"]["start"] == "2026-11-20T06:00"
@@ -190,7 +215,7 @@ def _series():
     now_i = 24 * 7 + 10
     pm[now_i] = 150.0
     pm[now_i - 24] = 120.0  # yesterday, same hour
-    pm[now_i - 168] = 0.0   # one week ago, same hour (zero baseline)
+    pm[now_i - 168] = 0.0  # one week ago, same hour (zero baseline)
     pm[1] = None
     aqi = [None] * 24 + [150] * (len(times) - 24)
     return {"times": times, "now_index": now_i, "hourly": {"pm2_5": pm, "aqi_in": aqi}}
@@ -226,10 +251,10 @@ def test_comparisons_daily_rows():
     assert daily[0]["date"] == "2026-11-12"
     assert daily[-1]["date"] == "2026-11-19"
     assert len(daily) == 8
-    assert daily[0]["hours"] == 23           # one None hour skipped
-    assert daily[0]["aqi_mean"] is None      # no AQI values on the first day
+    assert daily[0]["hours"] == 23  # one None hour skipped
+    assert daily[0]["aqi_mean"] is None  # no AQI values on the first day
     assert daily[1]["aqi_mean"] == 150
-    assert daily[-1]["hours"] == 11          # 00:00..10:00 only, never the future
+    assert daily[-1]["hours"] == 11  # 00:00..10:00 only, never the future
     assert daily[-1]["pm2_5_max"] == 150.0
 
 
@@ -248,8 +273,11 @@ def test_comparisons_short_history_has_no_baselines():
 
 def _snapshot(hour="2026-11-19T10:00", loc_id="28.61_77.21", is_demo=False, pm=150.0):
     return {
-        "location": {"id": loc_id}, "is_demo": is_demo, "observed_local": hour,
-        "aqi": {"value": 300}, "us_aqi": 180,
+        "location": {"id": loc_id},
+        "is_demo": is_demo,
+        "observed_local": hour,
+        "aqi": {"value": 300},
+        "us_aqi": 180,
         "pollutants": {"pm2_5": {"value": pm}, "pm10": {"value": 240.0}, "no2": {"value": 60.0}},
         "weather": {"temperature_c": 18.5, "wind_speed_kmh": 4.0},
         "sources": {"air": {"type": "model"}},
@@ -290,8 +318,7 @@ def test_recorded_history_sorted_limited_and_filtered():
         for hour in ("2026-11-19T12:00", "2026-11-19T10:00", "2026-11-19T11:00"):
             await ha.record_snapshot(_snapshot(hour=hour))
         await ha.record_snapshot(_snapshot(hour="2026-11-19T09:00", loc_id="other"))
-        return (await ha.recorded_history("28.61_77.21"),
-                await ha.recorded_history("28.61_77.21", limit=2))
+        return (await ha.recorded_history("28.61_77.21"), await ha.recorded_history("28.61_77.21", limit=2))
 
     full, limited = asyncio.run(run())
     assert [r["hour"] for r in full] == ["2026-11-19T10:00", "2026-11-19T11:00", "2026-11-19T12:00"]
@@ -301,10 +328,16 @@ def test_recorded_history_sorted_limited_and_filtered():
 def test_prune_deletes_only_old_rows():
     async def run():
         store = get_store()
-        await store.set("history", "old", {"location_id": "x", "hour": "2000-01-01T00:00",
-                                           "recorded_at": "2000-01-01T00:00:00+00:00"})
-        await store.set("history", "new", {"location_id": "x", "hour": "2999-01-01T00:00",
-                                           "recorded_at": "2999-01-01T00:00:00+00:00"})
+        await store.set(
+            "history",
+            "old",
+            {"location_id": "x", "hour": "2000-01-01T00:00", "recorded_at": "2000-01-01T00:00:00+00:00"},
+        )
+        await store.set(
+            "history",
+            "new",
+            {"location_id": "x", "hour": "2999-01-01T00:00", "recorded_at": "2999-01-01T00:00:00+00:00"},
+        )
         await store.set("history", "untimed", {"location_id": "x", "hour": "2999-01-02T00:00"})
         deleted = await ha.prune(30)
         remaining = sorted(r["id"] for r in await store.query("history"))

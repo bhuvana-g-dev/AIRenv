@@ -1,4 +1,5 @@
 """Telegram integration flows: Bot API calls, start-up modes, polling, group privacy and commands (no network)."""
+
 import asyncio
 import contextlib
 import hashlib
@@ -69,21 +70,34 @@ def env_ctx(monkeypatch, sample_bundle):
 
 
 def _update(text, chat_id=CHAT, chat_type="supergroup", user_id=42, title="Parents"):
-    return {"update_id": 1, "message": {"chat": {"id": chat_id, "type": chat_type, "title": title},
-                                        "from": {"id": user_id, "username": "parent1"}, "text": text}}
+    return {
+        "update_id": 1,
+        "message": {
+            "chat": {"id": chat_id, "type": chat_type, "title": title},
+            "from": {"id": user_id, "username": "parent1"},
+            "text": text,
+        },
+    }
 
 
 async def _group(chat_id=CHAT, **fields):
-    doc = {"chat_id": str(chat_id), "title": "Parents", "community_id": None, "reply_mode": "approval",
-           "location": None, "is_demo": False, "authorized": True, **fields}
+    doc = {
+        "chat_id": str(chat_id),
+        "title": "Parents",
+        "community_id": None,
+        "reply_mode": "approval",
+        "location": None,
+        "is_demo": False,
+        "authorized": True,
+        **fields,
+    }
     await get_store().set("tg_groups", str(chat_id), doc)
     return doc
 
 
 def _community(loc, ctype="school"):
     owner = CurrentUser(uid="owner", role="member", auth_mode="firebase")
-    return asyncio.run(cs.create(owner, cs.CommunityIn(name="Sunrise School", type=ctype,
-                                                       location=loc.model_dump())))
+    return asyncio.run(cs.create(owner, cs.CommunityIn(name="Sunrise School", type=ctype, location=loc.model_dump())))
 
 
 def _events():
@@ -96,6 +110,7 @@ def _fingerprint(chat_id, kind, sub_type, date, time):
 
 
 # ----------------------------------------------------------------------------- Bot API call
+
 
 def _mock_client(monkeypatch, handler):
     c = httpx.AsyncClient(transport=httpx.MockTransport(handler))
@@ -123,8 +138,9 @@ def test_call_posts_json_and_returns_result(monkeypatch):
 
 def test_call_raises_with_telegram_description(monkeypatch):
     monkeypatch.setattr(get_settings(), "telegram_bot_token", "123:abc")
-    _mock_client(monkeypatch, lambda r: httpx.Response(200, json={"ok": False,
-                                                                  "description": "Bad Request: chat not found"}))
+    _mock_client(
+        monkeypatch, lambda r: httpx.Response(200, json={"ok": False, "description": "Bad Request: chat not found"})
+    )
     with pytest.raises(RuntimeError) as info:
         asyncio.run(tg.call("sendMessage", {"chat_id": 1}))
     assert str(info.value) == "Telegram sendMessage failed: Bad Request: chat not found"
@@ -148,6 +164,7 @@ def test_send_message_truncates_and_uses_markdown(bot):
 
 
 # ----------------------------------------------------------------------------- status / start
+
 
 def test_status_reports_configuration_and_bot_username(monkeypatch):
     monkeypatch.setattr(get_settings(), "telegram_bot_token", "")
@@ -207,10 +224,19 @@ def test_start_webhook_mode_registers_webhook(monkeypatch):
     monkeypatch.setattr(tg, "call", fake_call)
     asyncio.run(tg.start())
     assert [m for m, _ in calls] == ["getMe", "setMyCommands", "setWebhook"]
-    assert [c["command"] for c in calls[1][1]["commands"]] == ["air", "optin", "optout", "setlocation",
-                                                               "privacy", "help"]
-    assert calls[2][1] == {"url": "https://airenv.example/api/telegram/webhook", "secret_token": "s3cret",
-                           "allowed_updates": ["message", "my_chat_member"]}
+    assert [c["command"] for c in calls[1][1]["commands"]] == [
+        "air",
+        "optin",
+        "optout",
+        "setlocation",
+        "privacy",
+        "help",
+    ]
+    assert calls[2][1] == {
+        "url": "https://airenv.example/api/telegram/webhook",
+        "secret_token": "s3cret",
+        "allowed_updates": ["message", "my_chat_member"],
+    }
     assert tg._status["mode"] == "webhook" and tg._status["connected"] is True and tg._status["error"] is None
     assert tg.status()["bot_username"] == "airenv_bot"
     assert tg._poll_task is None
@@ -256,13 +282,16 @@ def test_stop_without_poll_task_is_a_no_op():
 
 # ----------------------------------------------------------------------------- polling loop
 
+
 def test_poll_loop_advances_offset_survives_errors_and_stops_on_cancel(monkeypatch):
     offsets, handled, sleeps, status_after_error = [], [], [], []
-    responses = iter([
-        [{"update_id": 5}, {"update_id": 6}],
-        RuntimeError("Telegram getUpdates failed: Conflict"),
-        asyncio.CancelledError(),
-    ])
+    responses = iter(
+        [
+            [{"update_id": 5}, {"update_id": 6}],
+            RuntimeError("Telegram getUpdates failed: Conflict"),
+            asyncio.CancelledError(),
+        ]
+    )
 
     async def fake_call(method, payload=None, request_timeout=15):
         assert method == "getUpdates" and request_timeout == 35
@@ -300,8 +329,10 @@ def test_poll_loop_advances_offset_survives_errors_and_stops_on_cancel(monkeypat
 
 # ----------------------------------------------------------------------------- helpers
 
-@pytest.mark.parametrize("member_status, expected", [("administrator", True), ("creator", True),
-                                                     ("member", False), ("left", False)])
+
+@pytest.mark.parametrize(
+    "member_status, expected", [("administrator", True), ("creator", True), ("member", False), ("left", False)]
+)
 def test_is_group_admin_by_member_status(monkeypatch, member_status, expected):
     b = FakeBot(member_status)
     monkeypatch.setattr(tg, "call", b)
@@ -322,13 +353,16 @@ def test_air_summary_format(env_ctx):
     snap = bundle["snapshot"]
     text = asyncio.run(tg._air_summary(loc))
     cat = snap["aqi"]["category"]
-    assert text == (f"*Test City* · 10:00 local\nEstimated NAQI *{snap['aqi']['value']}* ({cat['label']}), "
-                    f"PM2.5 {snap['pollutants']['pm2_5']['value']} µg/m³.\n{cat['health']}\n"
-                    "_Source: Test model (model estimate)._")
+    assert text == (
+        f"*Test City* · 10:00 local\nEstimated NAQI *{snap['aqi']['value']}* ({cat['label']}), "
+        f"PM2.5 {snap['pollutants']['pm2_5']['value']} µg/m³.\n{cat['health']}\n"
+        "_Source: Test model (model estimate)._"
+    )
     assert requested == [loc]
 
 
 # ----------------------------------------------------------------------------- group privacy
+
 
 def test_update_without_text_is_ignored_but_timestamped(bot, env_ctx):
     asyncio.run(tg.handle_update({"update_id": 3, "message": {"chat": {"id": CHAT, "type": "group"}}}))
@@ -375,8 +409,7 @@ def test_opted_in_group_creates_event_with_fingerprint_dedup(bot, env_ctx):
     assert ev["community_id"] == community["id"]
     assert (ev["source"], ev["group_id"], ev["group_title"]) == ("telegram", str(CHAT), "Parents")
     assert (ev["kind"], ev["activity_type"], ev["intensity"], ev["outdoor"]) == ("activity", "sports", "high", True)
-    assert (ev["date"], ev["time"], ev["time_precision"], ev["duration_hours"]) == ("2026-11-20", "21:00",
-                                                                                     "exact", 2)
+    assert (ev["date"], ev["time"], ev["time_precision"], ev["duration_hours"]) == ("2026-11-20", "21:00", "exact", 2)
     assert ev["risk"]["respond"] is True and ev["risk"]["event_time"] == "2026-11-20T21:00"
     assert ev["advisory"]["status"] == "pending"  # approval mode: nothing posted
     assert ev["advisory"]["text"].startswith("🌫️ AIRenv advisory:")
@@ -400,8 +433,12 @@ def test_burning_concern_is_captured(bot, env_ctx):
     asyncio.run(tg.handle_update(_update("Someone is burning garbage near block C")))
     ev = _events()[0]
     assert (ev["kind"], ev["concern_type"], ev["date"]) == ("concern", "open_burning", "2026-11-19")
-    assert ev["risk"] == {"level": "concern", "summary": "Open burning was discussed in the group.",
-                          "respond": True, "confidence": "high"}
+    assert ev["risk"] == {
+        "level": "concern",
+        "summary": "Open burning was discussed in the group.",
+        "respond": True,
+        "confidence": "high",
+    }
     assert ev["advisory"]["status"] == "pending"
     assert "Solid Waste Management Rules, 2016" in ev["advisory"]["text"]
 
@@ -443,6 +480,7 @@ def test_opted_in_group_without_community_replies_but_stores_nothing(bot, env_ct
 
 
 # ----------------------------------------------------------------------------- commands
+
 
 def test_start_with_valid_link_code_links_account(bot):
     store = get_store()
@@ -533,8 +571,12 @@ def test_optin_creates_group_with_connect_code(bot):
     asyncio.run(tg.handle_update(_update("/optin", title="Sunrise Parents")))
     g = asyncio.run(get_store().get("tg_groups", str(CHAT)))
     assert g["authorized"] is True and g["opted_in_at"]
-    assert (g["title"], g["reply_mode"], g["community_id"], g["is_demo"]) == ("Sunrise Parents", "approval",
-                                                                              None, False)
+    assert (g["title"], g["reply_mode"], g["community_id"], g["is_demo"]) == (
+        "Sunrise Parents",
+        "approval",
+        None,
+        False,
+    )
     assert len(g["connect_code"]) >= 4
     assert f"`{g['connect_code']}`" in bot.sent[0]
     assert bot.sent[0].startswith("✅ Conversation intelligence enabled for this group.")
@@ -587,6 +629,7 @@ def test_setlocation_found_saves_group_location(bot, monkeypatch):
 
 
 # ----------------------------------------------------------------------------- link codes
+
 
 def test_create_link_code_with_bot_username(monkeypatch):
     monkeypatch.setattr(tg, "_bot_info", {"username": "airenv_bot"})

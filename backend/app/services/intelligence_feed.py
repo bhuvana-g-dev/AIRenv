@@ -1,18 +1,19 @@
 """Live intelligence feed: persisted, deduplicated application events pushed over SSE."""
+
 from __future__ import annotations
 
-import hashlib
-from datetime import UTC, datetime
 from typing import Any
 
+from app.core.clock import utc_now_iso
 from app.core.events_bus import bus
+from app.core.ids import stable_id
 from app.db.store import get_store
 
 
 async def publish(location_id: str, event: dict[str, Any]) -> dict[str, Any] | None:
     """Store an event unless an identical one (same dedup key) already exists."""
     dedup = event.get("dedup") or f"{event['type']}:{event['title']}"
-    doc_id = hashlib.sha1(f"{location_id}|{dedup}".encode(), usedforsecurity=False).hexdigest()[:20]
+    doc_id = stable_id(location_id, dedup)
     store = get_store()
     if await store.get("feed", doc_id):
         return None
@@ -23,7 +24,7 @@ async def publish(location_id: str, event: dict[str, Any]) -> dict[str, Any] | N
         "title": event["title"],
         "detail": event.get("detail"),
         "data": event.get("data"),
-        "created_at": datetime.now(UTC).isoformat(),
+        "created_at": utc_now_iso(),
     }
     await store.set("feed", doc_id, doc)
     doc["id"] = doc_id

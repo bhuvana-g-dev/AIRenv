@@ -4,51 +4,59 @@ Firestore is the production database. When Firebase credentials are not
 configured, an SQLite-backed document store with the same interface is used so
 the application still runs end-to-end on a developer machine.
 """
+
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
+import operator
 import os
 import re
 import sqlite3
 import threading
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from typing import Any
 
 from app.config import get_settings
+from app.core.firebase import ensure_firebase_app
 
 log = logging.getLogger("airenv.store")
 
 Filter = tuple[str, str, Any]  # (field, op, value) op in == != < <= > >= in array_contains
 
 
+def _ordered(compare: Callable[[Any, Any], bool]) -> Callable[[Any, Any], bool]:
+    """Range comparisons never match a missing field (like Firestore)."""
+    return lambda cur, value: cur is not None and compare(cur, value)
+
+
+# Predicate per filter operator: (document value, filter value) -> matches. Unknown operators match everything.
+_OPERATORS: dict[str, Callable[[Any, Any], bool]] = {
+    "==": operator.eq,
+    "!=": operator.ne,
+    "<": _ordered(operator.lt),
+    "<=": _ordered(operator.le),
+    ">": _ordered(operator.gt),
+    ">=": _ordered(operator.ge),
+    "in": lambda cur, value: cur in value,
+    "array_contains": lambda cur, value: isinstance(cur, list) and value in cur,
+}
+
+
+def _field_value(doc: dict[str, Any], field: str) -> Any:
+    """Resolve a dotted field path; missing parts resolve to None."""
+    cur: Any = doc
+    for part in field.split("."):
+        cur = cur.get(part) if isinstance(cur, dict) else None
+    return cur
+
+
 def _match(doc: dict[str, Any], filters: Iterable[Filter]) -> bool:
-    for field, op, value in filters:
-        cur: Any = doc
-        for part in field.split("."):
-            cur = cur.get(part) if isinstance(cur, dict) else None
-        if op == "==" and cur != value:
-            return False
-        if op == "!=" and cur == value:
-            return False
-        if op in ("<", "<=", ">", ">="):
-            if cur is None:
-                return False
-            if op == "<" and not cur < value:
-                return False
-            if op == "<=" and not cur <= value:
-                return False
-            if op == ">" and not cur > value:
-                return False
-            if op == ">=" and not cur >= value:
-                return False
-        if op == "in" and cur not in value:
-            return False
-        if op == "array_contains" and (not isinstance(cur, list) or value not in cur):
-            return False
-    return True
+    return all(
+        _OPERATORS.get(op, lambda _cur, _value: True)(_field_value(doc, field), value) for field, op, value in filters
+    )
 
 
 class DocumentStore(ABC):
@@ -134,7 +142,8 @@ class SQLiteStore(DocumentStore):
             for f in _INDEXED_FIELDS:
                 name = "idx_docs_" + f.replace(".", "_")
                 self._conn.execute(
-                    f"CREATE INDEX IF NOT EXISTS {name} ON docs(collection, json_extract(data, '$.{f}'))")
+                    f"CREATE INDEX IF NOT EXISTS {name} ON docs(collection, json_extract(data, '$.{f}'))"
+                )
             self._conn.commit()
 
     def _get(self, collection: str, doc_id: str) -> dict[str, Any] | None:
@@ -163,8 +172,10 @@ class SQLiteStore(DocumentStore):
         where, params = _pushdown(filters)
         with self._lock:
             # `where` contains only validated field names and `?` placeholders (see _pushdown).
-            rows = self._conn.execute(f"SELECT data FROM docs WHERE collection=?{where}",  # noqa: S608
-                                      (collection, *params)).fetchall()
+            rows = self._conn.execute(
+                f"SELECT data FROM docs WHERE collection=?{where}",  # noqa: S608
+                (collection, *params),
+            ).fetchall()
         return [json.loads(r[0]) for r in rows]
 
     async def get(self, collection: str, doc_id: str) -> dict[str, Any] | None:
@@ -176,7 +187,14 @@ class SQLiteStore(DocumentStore):
     async def delete(self, collection: str, doc_id: str) -> None:
         await asyncio.to_thread(self._delete, collection, doc_id)
 
-    async def query(self, collection, filters=None, order_by=None, descending=False, limit=None):
+    async def query(
+        self,
+        collection: str,
+        filters: list[Filter] | None = None,
+        order_by: str | None = None,
+        descending: bool = False,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
         docs = await asyncio.to_thread(self._select, collection, filters or [])
         docs = [d for d in docs if _match(d, filters or [])]
         if order_by:
@@ -188,30 +206,30 @@ class FirestoreStore(DocumentStore):
     name = "firestore"
 
     def __init__(self, credentials: str, project_id: str) -> None:
-        import firebase_admin
-        from firebase_admin import credentials as fb_credentials
-        from firebase_admin import firestore
+        ensure_firebase_app(credentials, project_id)
+        from firebase_admin import firestore  # noqa: PLC0415 - optional dependency, only needed for Firestore
 
-        if not firebase_admin._apps:
-            if credentials.strip().startswith("{"):
-                cred = fb_credentials.Certificate(json.loads(credentials))
-            else:
-                cred = fb_credentials.Certificate(credentials)
-            firebase_admin.initialize_app(cred, {"projectId": project_id})
-        self._db = firestore.client()
+        self._db: Any = firestore.client()
 
-    async def get(self, collection, doc_id):
+    async def get(self, collection: str, doc_id: str) -> dict[str, Any] | None:
         snap = await asyncio.to_thread(self._db.collection(collection).document(doc_id).get)
         return snap.to_dict() if snap.exists else None
 
-    async def set(self, collection, doc_id, data):
+    async def set(self, collection: str, doc_id: str, data: dict[str, Any]) -> None:
         await asyncio.to_thread(self._db.collection(collection).document(doc_id).set, {**data, "id": doc_id})
 
-    async def delete(self, collection, doc_id):
+    async def delete(self, collection: str, doc_id: str) -> None:
         await asyncio.to_thread(self._db.collection(collection).document(doc_id).delete)
 
-    async def query(self, collection, filters=None, order_by=None, descending=False, limit=None):
-        from google.cloud.firestore_v1.base_query import FieldFilter
+    async def query(
+        self,
+        collection: str,
+        filters: list[Filter] | None = None,
+        order_by: str | None = None,
+        descending: bool = False,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        from google.cloud.firestore_v1.base_query import FieldFilter  # noqa: PLC0415 - optional dependency
 
         def run() -> list[dict[str, Any]]:
             q: Any = self._db.collection(collection)
@@ -246,7 +264,7 @@ def get_store() -> DocumentStore:
     return _store
 
 
-def set_store(store: DocumentStore) -> None:
+def set_store(store: DocumentStore | None) -> None:
     """Used by tests to inject an in-memory store."""
     global _store
     _store = store

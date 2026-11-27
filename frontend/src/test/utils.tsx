@@ -10,7 +10,10 @@ import { configureAxe } from "vitest-axe";
  */
 export const axe = configureAxe({ rules: { "color-contrast": { enabled: false } } });
 
-export function renderWithProviders(ui: ReactElement, { route = "/", ...options }: { route?: string } & Omit<RenderOptions, "wrapper"> = {}) {
+export function renderWithProviders(
+  ui: ReactElement,
+  { route = "/", ...options }: { route?: string } & Omit<RenderOptions, "wrapper"> = {},
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>

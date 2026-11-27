@@ -31,8 +31,7 @@ def test_bundle_briefing_and_assistant(client):
     br = client.get("/api/insights/briefing").json()
     assert br["generated_by"] == "rules"
     for rec in br["recommendations"]:
-        for field in ("what_is_happening", "why_it_matters", "action", "alternative", "expected_benefit",
-                      "confidence"):
+        for field in ("what_is_happening", "why_it_matters", "action", "alternative", "expected_benefit", "confidence"):
             assert rec[field]
     ans = client.post("/api/assistant/chat", json={"question": "Is it safe to play outside?"}).json()
     assert ans["intent"] == "safe_outside"
@@ -54,8 +53,9 @@ def test_community_flow(client):
     assert all(c["is_demo"] for c in comms)
     detail = client.get(f"/api/communities/{comms[0]['id']}").json()
     assert "disclaimer" in detail["stats"]
-    analyzed = client.post("/api/conversation/analyze",
-                           json={"text": "Tomorrow outdoor sports at 3 PM", "audience": "school"}).json()
+    analyzed = client.post(
+        "/api/conversation/analyze", json={"text": "Tomorrow outdoor sports at 3 PM", "audience": "school"}
+    ).json()
     assert analyzed["stored"] is False and analyzed["relevant"] is True
     removed = client.delete("/api/communities/demo").json()
     assert removed["removed"] > 0
@@ -63,10 +63,17 @@ def test_community_flow(client):
 
 
 def test_impact_endpoints(client):
-    t = client.post("/api/impact/trip", json={"baseline_mode": "petrol_car", "alternative_mode": "bus",
-                                              "distance_km": 8, "trips_per_week": 10}).json()
+    t = client.post(
+        "/api/impact/trip",
+        json={"baseline_mode": "petrol_car", "alternative_mode": "bus", "distance_km": 8, "trips_per_week": 10},
+    ).json()
     assert t["avoided_kg"]["year"]["estimate"] > 0
     e = client.post("/api/impact/exposure", json={"activity_hours": 1, "intensity": "high"}).json()
     assert e["forecast"] and e["assumptions"]
-    assert client.post("/api/impact/trip", json={"baseline_mode": "rocket", "alternative_mode": "bus",
-                                                 "distance_km": 8, "trips_per_week": 10}).status_code == 422
+    assert (
+        client.post(
+            "/api/impact/trip",
+            json={"baseline_mode": "rocket", "alternative_mode": "bus", "distance_km": 8, "trips_per_week": 10},
+        ).status_code
+        == 422
+    )

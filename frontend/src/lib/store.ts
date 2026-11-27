@@ -64,7 +64,10 @@ const timers = new Map<string, ReturnType<typeof setTimeout>>();
 export const useToasts = create<ToastState>((set, get) => {
   const schedule = (id: string) => {
     clearTimeout(timers.get(id));
-    timers.set(id, setTimeout(() => get().dismiss(id), TOAST_TIMEOUT_MS));
+    timers.set(
+      id,
+      setTimeout(() => get().dismiss(id), TOAST_TIMEOUT_MS),
+    );
   };
   return {
     toasts: [],

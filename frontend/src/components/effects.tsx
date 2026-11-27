@@ -12,11 +12,19 @@ export function Aurora({ className, intensity = 1 }: { className?: string; inten
       />
       <div
         className="absolute -right-[15%] top-[10%] h-[70vh] w-[60vw] rounded-full blur-[120px] animate-aurora motion-reduce:animate-none"
-        style={{ background: "radial-gradient(closest-side, rgba(85,214,232,0.16), transparent)", animationDelay: "-8s", opacity: intensity }}
+        style={{
+          background: "radial-gradient(closest-side, rgba(85,214,232,0.16), transparent)",
+          animationDelay: "-8s",
+          opacity: intensity,
+        }}
       />
       <div
         className="absolute bottom-[-30%] left-[20%] h-[70vh] w-[70vw] rounded-full blur-[130px] animate-aurora motion-reduce:animate-none"
-        style={{ background: "radial-gradient(closest-side, rgba(124,231,180,0.12), transparent)", animationDelay: "-16s", opacity: intensity }}
+        style={{
+          background: "radial-gradient(closest-side, rgba(124,231,180,0.12), transparent)",
+          animationDelay: "-16s",
+          opacity: intensity,
+        }}
       />
     </div>
   );

@@ -1,4 +1,5 @@
 """Application configuration. Every secret comes from environment variables."""
+
 from __future__ import annotations
 
 from functools import lru_cache
@@ -113,4 +114,4 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()  # type: ignore[call-arg]
+    return Settings()

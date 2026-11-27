@@ -3,14 +3,46 @@ import { Link } from "react-router-dom";
 import { Modal } from "./ui";
 
 const STEPS = [
-  { icon: MapPin, title: "Choose your location", text: "Use the location button at the top left of the header to search for a place or use your current position." },
-  { icon: LayoutDashboard, title: "Intelligence", text: "See the current NAQI, pollutant levels, the forecast and recommendations for your location." },
-  { icon: MapIcon, title: "Air Map", text: "View monitoring stations and the model estimate on a map. Stations appear only where a provider reports them." },
-  { icon: Bot, title: "AIRenv AI", text: "Ask questions such as “Is it safe to play outside at 5 PM?”. Answers use the live readings for your location." },
-  { icon: Users, title: "Community", text: "For schools, apartments and associations: check planned activities against the forecast and approve advisories." },
-  { icon: Sprout, title: "Impact", text: "Compare exposure at different times, estimate emissions avoided, and track verified community actions." },
-  { icon: Bell, title: "Alerts", text: "Alerts arrive automatically when conditions change. The bell in the header shows how many are unread." },
-  { icon: Settings, title: "Settings", text: "Update who you are planning for, quiet hours, and connect Telegram to get alerts outside the app." },
+  {
+    icon: MapPin,
+    title: "Choose your location",
+    text: "Use the location button at the top left of the header to search for a place or use your current position.",
+  },
+  {
+    icon: LayoutDashboard,
+    title: "Intelligence",
+    text: "See the current NAQI, pollutant levels, the forecast and recommendations for your location.",
+  },
+  {
+    icon: MapIcon,
+    title: "Air Map",
+    text: "View monitoring stations and the model estimate on a map. Stations appear only where a provider reports them.",
+  },
+  {
+    icon: Bot,
+    title: "AIRenv AI",
+    text: "Ask questions such as “Is it safe to play outside at 5 PM?”. Answers use the live readings for your location.",
+  },
+  {
+    icon: Users,
+    title: "Community",
+    text: "For schools, apartments and associations: check planned activities against the forecast and approve advisories.",
+  },
+  {
+    icon: Sprout,
+    title: "Impact",
+    text: "Compare exposure at different times, estimate emissions avoided, and track verified community actions.",
+  },
+  {
+    icon: Bell,
+    title: "Alerts",
+    text: "Alerts arrive automatically when conditions change. The bell in the header shows how many are unread.",
+  },
+  {
+    icon: Settings,
+    title: "Settings",
+    text: "Update who you are planning for, quiet hours, and connect Telegram to get alerts outside the app.",
+  },
 ];
 
 export function HowToUse({ open, onClose }: { open: boolean; onClose: () => void }) {

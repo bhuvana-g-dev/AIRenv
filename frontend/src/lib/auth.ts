@@ -5,10 +5,10 @@
 import type { Auth, User } from "firebase/auth";
 
 const config = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY as string | undefined,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string | undefined,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID as string | undefined,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID as string | undefined,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
 export const firebaseEnabled = Boolean(config.apiKey && config.projectId);
@@ -20,10 +20,7 @@ const listeners = new Set<(u: User | null) => void>();
 async function getAuthInstance(): Promise<Auth> {
   if (!authPromise) {
     authPromise = (async () => {
-      const [{ initializeApp }, { getAuth, onAuthStateChanged }] = await Promise.all([
-        import("firebase/app"),
-        import("firebase/auth"),
-      ]);
+      const [{ initializeApp }, { getAuth, onAuthStateChanged }] = await Promise.all([import("firebase/app"), import("firebase/auth")]);
       const app = initializeApp(config);
       const auth = getAuth(app);
       onAuthStateChanged(auth, (u) => {

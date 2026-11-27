@@ -49,8 +49,9 @@ def test_dispersion_levels():
 
 
 def test_trip_emissions_band():
-    r = ic.trip_emissions(ic.TripRequest(baseline_mode="petrol_car", alternative_mode="metro", distance_km=10,
-                                         trips_per_week=10))
+    r = ic.trip_emissions(
+        ic.TripRequest(baseline_mode="petrol_car", alternative_mode="metro", distance_km=10, trips_per_week=10)
+    )
     assert r["km_per_week"] == 100
     assert r["avoided_kg"]["week"]["estimate"] == round(0.164 * 100 - 0.035 * 100, 2)
     assert r["avoided_kg"]["week"]["low"] < r["avoided_kg"]["week"]["estimate"] < r["avoided_kg"]["week"]["high"]
@@ -60,8 +61,9 @@ def test_exposure_comparison_prefers_cleaner_window():
     times = [f"2026-11-20T{h:02d}:00" for h in range(24)]
     vals = [200.0] * 24
     vals[15] = 40.0
-    r = ic.exposure_comparison(times, vals, 0, ic.ExposureRequest(activity_hours=1, intensity="moderate",
-                                                                  planned_start="2026-11-20T08:00"))
+    r = ic.exposure_comparison(
+        times, vals, 0, ic.ExposureRequest(activity_hours=1, intensity="moderate", planned_start="2026-11-20T08:00")
+    )
     assert r["planned"]["inhaled_ug"] == round(200 * 1.56, 1)
     assert r["best"]["start"] == "2026-11-20T15:00"
     assert r["reduction_pct"] == 80.0

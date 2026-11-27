@@ -131,7 +131,13 @@ export function useCommunityDetail(id: string | null) {
 
 export function useAssistant() {
   return useMutation({
-    mutationFn: (body: { question: string; history: { role: string; content: string }[]; lat: number; lon: number; name: string; demo: boolean }) =>
-      api<AssistantReply>("/api/assistant/chat", { method: "POST", body: JSON.stringify(body), timeoutMs: 45000 }),
+    mutationFn: (body: {
+      question: string;
+      history: { role: string; content: string }[];
+      lat: number;
+      lon: number;
+      name: string;
+      demo: boolean;
+    }) => api<AssistantReply>("/api/assistant/chat", { method: "POST", body: JSON.stringify(body), timeoutMs: 45000 }),
   });
 }

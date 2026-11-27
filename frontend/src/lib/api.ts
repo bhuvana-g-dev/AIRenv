@@ -1,6 +1,6 @@
 import { getIdToken } from "./auth";
 
-export const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "") ?? "";
+export const API_BASE = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") ?? "";
 
 export class ApiError extends Error {
   status: number;
@@ -32,25 +32,28 @@ export async function api<T>(path: string, init: RequestInit & { timeoutMs?: num
   }
   clearTimeout(timer);
   if (!res.ok) {
-    let message = `Request failed (${res.status})`;
-    let code: string | undefined;
-    let demo: boolean | undefined;
+    let body: unknown = null;
     try {
-      const body = await res.json();
-      const d = body.detail;
-      if (typeof d === "string") message = d;
-      else if (d && typeof d === "object") {
-        message = d.message ?? message;
-        code = d.code;
-        demo = d.demo_available;
-      }
-      if (Array.isArray(d)) message = d.map((x: { msg: string }) => x.msg).join("; ");
+      body = await res.json();
     } catch {
       /* non-JSON error */
     }
-    throw new ApiError(res.status, message, code, demo);
+    const { message, code, demoAvailable } = parseErrorDetail(body, `Request failed (${res.status})`);
+    throw new ApiError(res.status, message, code, demoAvailable);
   }
   return res.json() as Promise<T>;
+}
+
+/** FastAPI `detail` payloads: a plain string, `{message, code, demo_available}`, or a validation-error list. */
+type ErrorDetail = string | { message?: string; code?: string; demo_available?: boolean } | { msg: string }[];
+
+/** Extract a user-facing message (and optional machine code) from an error response body. */
+export function parseErrorDetail(body: unknown, fallback: string): { message: string; code?: string; demoAvailable?: boolean } {
+  const d = body && typeof body === "object" && "detail" in body ? (body.detail as ErrorDetail | null) : null;
+  if (typeof d === "string") return { message: d };
+  if (Array.isArray(d)) return { message: d.map((x) => x.msg).join("; ") };
+  if (d && typeof d === "object") return { message: d.message ?? fallback, code: d.code, demoAvailable: d.demo_available };
+  return { message: fallback };
 }
 
 export function locQuery(loc: { lat: number; lon: number; name: string } | null, demo = false): string {

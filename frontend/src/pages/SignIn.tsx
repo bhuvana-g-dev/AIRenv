@@ -33,7 +33,11 @@ export default function SignIn() {
     <main id="main-content" className="relative grid min-h-screen place-items-center overflow-hidden bg-bg px-4">
       <Aurora />
       <ParticleField density={0.7} />
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="glass-strong relative w-full max-w-sm rounded-3xl p-7">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="glass-strong relative w-full max-w-sm rounded-3xl p-7"
+      >
         <Logo />
         <h1 className="mt-6 font-display text-xl font-semibold">{create ? "Create your account" : "Sign in"}</h1>
         <p className="mt-1 text-sm text-muted">Secure sign-in with Firebase Authentication.</p>

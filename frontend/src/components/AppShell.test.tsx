@@ -36,7 +36,11 @@ function renderShell() {
 
 describe("AppShell", () => {
   beforeEach(() => {
-    useApp.setState({ location: { id: "x", name: "New Delhi", lat: 28.6, lon: 77.2, admin1: "Delhi", country: "India" }, sidebarCollapsed: false, locationFromProfile: true });
+    useApp.setState({
+      location: { id: "x", name: "New Delhi", lat: 28.6, lon: 77.2, admin1: "Delhi", country: "India" },
+      sidebarCollapsed: false,
+      locationFromProfile: true,
+    });
   });
 
   it("starts with a skip link that moves focus to the main content", async () => {

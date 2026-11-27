@@ -22,10 +22,14 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements-dev.txt
       - run: pip install -r requirements-dev.txt
-      - name: Lint (ruff, incl. bandit security rules)
+      - name: Lint (ruff, incl. bandit security, complexity and pylint rules)
         run: ruff check .
+      - name: Formatting
+        run: ruff format --check .
+      - name: Type check
+        run: mypy
       - name: Tests with coverage
-        run: pytest -q --cov=app --cov-report=term --cov-fail-under=90
+        run: pytest -q --cov=app --cov-report=term --cov-fail-under=95
 
   frontend:
     runs-on: ubuntu-latest
@@ -41,8 +45,10 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run typecheck
-      - name: Lint (ESLint incl. jsx-a11y)
+      - name: Lint (type-aware ESLint incl. jsx-a11y)
         run: npm run lint
+      - name: Formatting
+        run: npm run format:check
       - name: Unit, component and axe accessibility tests
         run: npm test
       - run: npm run build

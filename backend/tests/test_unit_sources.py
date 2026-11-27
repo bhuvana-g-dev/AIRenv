@@ -1,4 +1,5 @@
 """Unit tests for environmental data helpers and the ambient-intelligence bundle builder (no network)."""
+
 import asyncio
 from datetime import UTC, datetime, timedelta
 
@@ -37,21 +38,33 @@ def _station(sid, pm25=None, provider="CPCB", distance=1.0, station_type="refere
         readings["pm2_5"] = {"value": pm25}
     if pm10 is not None:
         readings["pm10"] = {"value": pm10}
-    return {"id": sid, "name": f"Station {sid}", "provider": provider, "distance_km": distance,
-            "station_type": station_type, "readings": readings}
+    return {
+        "id": sid,
+        "name": f"Station {sid}",
+        "provider": provider,
+        "distance_km": distance,
+        "station_type": station_type,
+        "readings": readings,
+    }
 
 
 def test_hotspots_need_four_stations_with_pm25():
-    stations = [_station("a", 50), _station("b", 60), _station("c", 300), _station("d", pm10=500),
-                _station("e", pm10=500)]
+    stations = [
+        _station("a", 50),
+        _station("b", 60),
+        _station("c", 300),
+        _station("d", pm10=500),
+        _station("e", pm10=500),
+    ]
     assert env.detect_hotspots(stations) == []
 
 
 def test_hotspot_detected_with_ratio_and_median():
     stations = [_station(s, v) for s, v in zip("abcde", [50, 60, 70, 80, 200])]
     hs = env.detect_hotspots(stations)
-    assert hs == [{"station_id": "e", "name": "Station e", "pm2_5": 200, "local_median": 70, "ratio": 2.86,
-                   "provider": "CPCB"}]
+    assert hs == [
+        {"station_id": "e", "name": "Station e", "pm2_5": 200, "local_median": 70, "ratio": 2.86, "provider": "CPCB"}
+    ]
 
 
 def test_hotspot_requires_absolute_difference_of_20():
@@ -73,14 +86,17 @@ def test_hotspot_thresholds_are_inclusive():
 # --------------------------------------------------------------------------- CPCB helpers
 
 
-@pytest.mark.parametrize("raw, expected", [
-    ("19-11-2026 10:00:00", "2026-11-19T10:00:00+05:30"),
-    ("2026-11-19 10:00:00", "2026-11-19T10:00:00+05:30"),
-    ("19-11-2026 10:00", "2026-11-19T10:00:00+05:30"),
-    ("yesterday-ish", "yesterday-ish"),
-    (None, None),
-    ("", None),
-])
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("19-11-2026 10:00:00", "2026-11-19T10:00:00+05:30"),
+        ("2026-11-19 10:00:00", "2026-11-19T10:00:00+05:30"),
+        ("19-11-2026 10:00", "2026-11-19T10:00:00+05:30"),
+        ("yesterday-ish", "yesterday-ish"),
+        (None, None),
+        ("", None),
+    ],
+)
 def test_parse_cpcb_time(raw, expected):
     assert env._parse_cpcb_time(raw) == expected
 
@@ -94,8 +110,7 @@ def test_station_aqi_picks_dominant_and_ignores_unknown_keys():
 
 
 def test_station_aqi_without_usable_readings():
-    assert env._station_aqi({"pm2_5": {"value": -5}}) == {"value": None, "dominant_pollutant": None,
-                                                         "category": None}
+    assert env._station_aqi({"pm2_5": {"value": -5}}) == {"value": None, "dominant_pollutant": None, "category": None}
     assert env._station_aqi({})["value"] is None
 
 
@@ -112,18 +127,38 @@ def test_fetch_cpcb_groups_records_by_station(monkeypatch):
 
     async def fake_get_json(provider, url, *, params=None, headers=None, retries=1):
         calls.append(params)
-        base = {"station": "Mandir Marg", "city": "Delhi", "state": "Delhi", "latitude": "28.636",
-                "longitude": "77.201", "last_update": "19-11-2026 10:00:00"}
-        return {"records": [
-            {**base, "pollutant_id": "PM2.5", "avg_value": "90"},
-            {**base, "pollutant_id": "PM10", "avg_value": "100"},
-            {**base, "pollutant_id": "OZONE", "avg_value": "NA"},
-            {**base, "station": "Far Away", "latitude": "19.07", "longitude": "72.87", "pollutant_id": "PM2.5",
-             "avg_value": "50"},
-            {**base, "station": "Broken", "latitude": "n/a", "pollutant_id": "PM2.5", "avg_value": "50"},
-            {**base, "station": "Empty", "latitude": "28.62", "longitude": "77.22", "pollutant_id": "NH3",
-             "avg_value": "10"},
-        ]}
+        base = {
+            "station": "Mandir Marg",
+            "city": "Delhi",
+            "state": "Delhi",
+            "latitude": "28.636",
+            "longitude": "77.201",
+            "last_update": "19-11-2026 10:00:00",
+        }
+        return {
+            "records": [
+                {**base, "pollutant_id": "PM2.5", "avg_value": "90"},
+                {**base, "pollutant_id": "PM10", "avg_value": "100"},
+                {**base, "pollutant_id": "OZONE", "avg_value": "NA"},
+                {
+                    **base,
+                    "station": "Far Away",
+                    "latitude": "19.07",
+                    "longitude": "72.87",
+                    "pollutant_id": "PM2.5",
+                    "avg_value": "50",
+                },
+                {**base, "station": "Broken", "latitude": "n/a", "pollutant_id": "PM2.5", "avg_value": "50"},
+                {
+                    **base,
+                    "station": "Empty",
+                    "latitude": "28.62",
+                    "longitude": "77.22",
+                    "pollutant_id": "NH3",
+                    "avg_value": "10",
+                },
+            ]
+        }
 
     monkeypatch.setattr(env, "get_json", fake_get_json)
     out = asyncio.run(env.fetch_cpcb_stations(28.61, 77.21, 25))
@@ -176,8 +211,11 @@ def test_demo_air_quality_is_deterministic_and_sized_by_days():
 
 def test_fetch_stations_aggregates_providers(monkeypatch):
     async def ok(lat, lon, radius):
-        return [_station("far", 40, distance=12.0), _station("near", 60, distance=3.0),
-                _station("mid", 50, distance=7.0)]
+        return [
+            _station("far", 40, distance=12.0),
+            _station("near", 60, distance=3.0),
+            _station("mid", 50, distance=7.0),
+        ]
 
     async def failing(lat, lon, radius):
         raise UpstreamError("OpenAQ", "boom")
@@ -204,23 +242,24 @@ def test_fetch_stations_generic_exception_message(monkeypatch):
     monkeypatch.setitem(env.STATION_PROVIDERS, "cpcb", ("CPCB (data.gov.in)", broken))
     r = asyncio.run(env.fetch_stations(28.61, 77.21, enabled={"openaq": False, "sensor_community": False}))
     assert r["stations"] == []
-    assert r["providers"] == [{"key": "cpcb", "name": "CPCB (data.gov.in)", "status": "unavailable",
-                               "message": "parse failure", "count": 0}]
+    assert r["providers"] == [
+        {"key": "cpcb", "name": "CPCB (data.gov.in)", "status": "unavailable", "message": "parse failure", "count": 0}
+    ]
 
 
 # --------------------------------------------------------------------------- freshness / confidence
 
 
-@pytest.mark.parametrize("minutes, status", [(0, "fresh"), (90, "fresh"), (91, "aging"), (180, "aging"),
-                                             (181, "stale")])
+@pytest.mark.parametrize(
+    "minutes, status", [(0, "fresh"), (90, "fresh"), (91, "aging"), (180, "aging"), (181, "stale")]
+)
 def test_freshness_thresholds(minutes, status):
     r = ambient.freshness(FIXED_NOW - timedelta(minutes=minutes), FIXED_NOW)
     assert r == {"age_minutes": minutes, "status": status}
 
 
 def test_freshness_future_and_unknown():
-    assert ambient.freshness(FIXED_NOW + timedelta(minutes=30), FIXED_NOW) == {"age_minutes": 0,
-                                                                             "status": "fresh"}
+    assert ambient.freshness(FIXED_NOW + timedelta(minutes=30), FIXED_NOW) == {"age_minutes": 0, "status": "fresh"}
     assert ambient.freshness(None, FIXED_NOW) == {"age_minutes": None, "status": "unknown"}
 
 
@@ -229,18 +268,21 @@ AGREES = {"status": "agrees", "station": "Mandir Marg", "difference_pct": 12}
 DISAGREES = {"status": "disagrees", "station": "Mandir Marg", "difference_pct": 60}
 
 
-@pytest.mark.parametrize("source, fresh, check, valid, score, level", [
-    ("model", FRESH, None, True, 0.6, "medium"),
-    ("model", {"status": "aging"}, None, True, 0.5, "medium"),
-    ("model", {"status": "stale"}, None, True, 0.35, "low"),
-    ("model", {"status": "unknown"}, None, True, 0.35, "low"),
-    ("model", FRESH, None, False, 0.5, "medium"),
-    ("model", FRESH, AGREES, True, 0.8, "high"),
-    ("model", FRESH, DISAGREES, True, 0.45, "low"),
-    ("station", FRESH, AGREES, True, 0.95, "high"),     # 1.0 clamped
-    ("demo", {"status": "demo"}, None, True, 0.2, "low"),
-    ("demo", {"status": "stale"}, DISAGREES, False, 0.05, "low"),  # negative clamped
-])
+@pytest.mark.parametrize(
+    "source, fresh, check, valid, score, level",
+    [
+        ("model", FRESH, None, True, 0.6, "medium"),
+        ("model", {"status": "aging"}, None, True, 0.5, "medium"),
+        ("model", {"status": "stale"}, None, True, 0.35, "low"),
+        ("model", {"status": "unknown"}, None, True, 0.35, "low"),
+        ("model", FRESH, None, False, 0.5, "medium"),
+        ("model", FRESH, AGREES, True, 0.8, "high"),
+        ("model", FRESH, DISAGREES, True, 0.45, "low"),
+        ("station", FRESH, AGREES, True, 0.95, "high"),  # 1.0 clamped
+        ("demo", {"status": "demo"}, None, True, 0.2, "low"),
+        ("demo", {"status": "stale"}, DISAGREES, False, 0.05, "low"),  # negative clamped
+    ],
+)
 def test_confidence_scores(source, fresh, check, valid, score, level):
     r = ambient.confidence(source, fresh, check, valid)
     assert r["score"] == score
@@ -257,8 +299,11 @@ def test_confidence_reasons_mention_station():
 
 
 def test_station_check_agrees_with_nearest_reference():
-    stations = [_station("lc", 10, station_type="low_cost", distance=0.5),
-                _station("near", 80, distance=2.0), _station("next", 500, distance=4.0)]
+    stations = [
+        _station("lc", 10, station_type="low_cost", distance=0.5),
+        _station("near", 80, distance=2.0),
+        _station("next", 500, distance=4.0),
+    ]
     r = ambient._station_check(100, stations)
     assert r["status"] == "agrees"
     assert r["station"] == "Station near"
@@ -272,20 +317,24 @@ def test_station_check_disagrees_and_boundary():
     assert ambient._station_check(136, [_station("a", 100)])["status"] == "disagrees"
 
 
-@pytest.mark.parametrize("model, stations", [
-    (100, []),
-    (None, [_station("a", 100)]),
-    (100, [_station("a", 100, distance=10.5)]),           # too far
-    (100, [_station("a", 100, station_type="low_cost")]),  # not a reference monitor
-    (100, [_station("a", pm10=100)]),                     # no PM2.5
-    (100, [_station("a", 0)]),                            # cannot compare against zero
-])
+@pytest.mark.parametrize(
+    "model, stations",
+    [
+        (100, []),
+        (None, [_station("a", 100)]),
+        (100, [_station("a", 100, distance=10.5)]),  # too far
+        (100, [_station("a", 100, station_type="low_cost")]),  # not a reference monitor
+        (100, [_station("a", pm10=100)]),  # no PM2.5
+        (100, [_station("a", 0)]),  # cannot compare against zero
+    ],
+)
 def test_station_check_none(model, stations):
     assert ambient._station_check(model, stations) is None
 
 
-@pytest.mark.parametrize("seconds, text", [(19800, "+05:30"), (0, "+00:00"), (20700, "+05:45"),
-                                           (-12600, "-03:30"), (-36000, "-10:00")])
+@pytest.mark.parametrize(
+    "seconds, text", [(19800, "+05:30"), (0, "+00:00"), (20700, "+05:45"), (-12600, "-03:30"), (-36000, "-10:00")]
+)
 def test_offset_str(seconds, text):
     assert ambient._offset_str(seconds) == text
 

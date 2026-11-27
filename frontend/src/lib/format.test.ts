@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { CATEGORY_COLORS, CATEGORY_TEXT_COLORS, NAQI_BANDS, categoryForAqi, categoryForPm25, colorForAqi, colorForPm25, textColorForAqi } from "./aqi";
+import {
+  CATEGORY_COLORS,
+  CATEGORY_TEXT_COLORS,
+  NAQI_BANDS,
+  categoryForAqi,
+  categoryForPm25,
+  colorForAqi,
+  colorForPm25,
+  textColorForAqi,
+} from "./aqi";
 import { absoluteTime, fmtNum, localDate, localDayHour, localHour, pct, timeAgo, windDirection } from "./format";
 
 describe("format edge cases", () => {

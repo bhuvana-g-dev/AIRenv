@@ -4,6 +4,7 @@ Topics:
   location:<location_id>  -> snapshot.updated, feed.created
   user:<uid>              -> notification.created
 """
+
 from __future__ import annotations
 
 import asyncio

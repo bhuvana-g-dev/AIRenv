@@ -1,20 +1,31 @@
 """Notification centre: priority, deduplication, cooldowns, preferences and delivery."""
+
 from __future__ import annotations
 
-import hashlib
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
+from app.core.clock import utc_now, utc_now_iso
 from app.core.events_bus import bus
+from app.core.ids import stable_id
 from app.db.store import get_store
 from app.services.risk_detection import SEVERITY_ORDER
 
 log = logging.getLogger("airenv.notify")
 
-COOLDOWN_MINUTES = {"critical": 120, "deterioration": 180, "forecast": 360, "community": 60,
-                    "recommendation": 720, "positive": 360}
+COOLDOWN_MINUTES = {
+    "critical": 120,
+    "deterioration": 180,
+    "forecast": 360,
+    "community": 60,
+    "recommendation": 720,
+    "positive": 360,
+}
+DEFAULT_COOLDOWN_MINUTES = 180
 DEDUP_HOURS = 12
+DAILY_LIMIT_WINDOW = timedelta(hours=24)
+DEFAULT_DAILY_LIMIT = 6
 
 
 def _parse_hhmm(v: str) -> int:
@@ -31,51 +42,71 @@ def in_quiet_hours(prefs: dict[str, Any], local_now: datetime) -> bool:
     return (start <= cur or cur < end) if start > end else (start <= cur < end)
 
 
-async def evaluate(user: dict[str, Any], signal: dict[str, Any], local_now: datetime,
-                   now: datetime | None = None) -> tuple[bool, str]:
-    """Decide whether a signal should become a notification for this user. Returns (send, reason)."""
-    now = now or datetime.now(UTC)
-    prefs = user.get("notification_prefs") or {}
+def _preference_block(prefs: dict[str, Any], signal: dict[str, Any]) -> str | None:
+    """Reason the user's category and severity preferences suppress this signal, if any."""
+    categories = prefs.get("categories") or {}
     category, severity = signal["category"], signal["severity"]
-    if not (prefs.get("categories") or {}).get(category, True):
-        return False, "category disabled"
-    if SEVERITY_ORDER[severity] < SEVERITY_ORDER.get(prefs.get("min_severity", "medium"), 2) \
-            and category != "positive":
-        return False, "below minimum severity"
-    if category == "positive" and not (prefs.get("categories") or {}).get("positive", True):
-        return False, "positive disabled"
+    if not categories.get(category, True):
+        return "category disabled"
+    min_rank = SEVERITY_ORDER.get(prefs.get("min_severity", "medium"), SEVERITY_ORDER["medium"])
+    if SEVERITY_ORDER[severity] < min_rank and category != "positive":
+        return "below minimum severity"
+    if category == "positive" and not categories.get("positive", True):
+        return "positive disabled"
+    return None
+
+
+async def _history_block(uid: str, signal: dict[str, Any], now: datetime) -> str | None:
+    """Duplicate of a recent notification, or the same category is still cooling down (unless escalating)."""
     store = get_store()
-    uid = user["uid"]
-    dedup_id = hashlib.sha1(f"{uid}|{signal['key']}".encode(), usedforsecurity=False).hexdigest()[:20]
-    existing = await store.get("notifications", dedup_id)
+    existing = await store.get("notifications", stable_id(uid, signal["key"]))
     if existing and existing["created_at"] > (now - timedelta(hours=DEDUP_HOURS)).isoformat():
-        return False, "duplicate"
-    recent = await store.query("notifications", [("uid", "==", uid), ("category", "==", category)])
-    recent.sort(key=lambda n: n["created_at"], reverse=True)
-    if recent:
-        last = recent[0]
-        cooldown = timedelta(minutes=COOLDOWN_MINUTES.get(category, 180))
-        escalation = SEVERITY_ORDER[severity] > SEVERITY_ORDER.get(last["severity"], 0)
-        if last["created_at"] > (now - cooldown).isoformat() and not escalation:
-            return False, "cooldown"
-    if severity != "critical" and in_quiet_hours(prefs, local_now):
-        return False, "quiet hours"
-    today = (now - timedelta(hours=24)).isoformat()
-    if severity != "critical":
-        all_recent = await store.query("notifications", [("uid", "==", uid), ("created_at", ">=", today)])
-        if len([n for n in all_recent if n["severity"] != "critical"]) >= int(prefs.get("daily_limit", 6)):
-            return False, "daily limit"
-    return True, "ok"
+        return "duplicate"
+    recent = await store.query("notifications", [("uid", "==", uid), ("category", "==", signal["category"])])
+    if not recent:
+        return None
+    last = max(recent, key=lambda n: n["created_at"])
+    cooldown = timedelta(minutes=COOLDOWN_MINUTES.get(signal["category"], DEFAULT_COOLDOWN_MINUTES))
+    escalation = SEVERITY_ORDER[signal["severity"]] > SEVERITY_ORDER.get(last["severity"], 0)
+    if last["created_at"] > (now - cooldown).isoformat() and not escalation:
+        return "cooldown"
+    return None
 
 
-async def dispatch(user: dict[str, Any], signal: dict[str, Any], local_now: datetime,
-                   telegram_sender: Any = None) -> dict[str, Any] | None:
+async def _daily_limit_block(uid: str, prefs: dict[str, Any], now: datetime) -> str | None:
+    since = (now - DAILY_LIMIT_WINDOW).isoformat()
+    all_recent = await get_store().query("notifications", [("uid", "==", uid), ("created_at", ">=", since)])
+    non_critical = [n for n in all_recent if n["severity"] != "critical"]
+    return "daily limit" if len(non_critical) >= int(prefs.get("daily_limit", DEFAULT_DAILY_LIMIT)) else None
+
+
+async def evaluate(
+    user: dict[str, Any], signal: dict[str, Any], local_now: datetime, now: datetime | None = None
+) -> tuple[bool, str]:
+    """Decide whether a signal should become a notification for this user. Returns (send, reason).
+
+    Critical signals bypass quiet hours and the daily limit, never deduplication or preferences.
+    """
+    now = now or utc_now()
+    prefs = user.get("notification_prefs") or {}
+    critical = signal["severity"] == "critical"
+    reason = _preference_block(prefs, signal) or await _history_block(user["uid"], signal, now)
+    if not reason and not critical and in_quiet_hours(prefs, local_now):
+        reason = "quiet hours"
+    if not reason and not critical:
+        reason = await _daily_limit_block(user["uid"], prefs, now)
+    return (False, reason) if reason else (True, "ok")
+
+
+async def dispatch(
+    user: dict[str, Any], signal: dict[str, Any], local_now: datetime, telegram_sender: Any = None
+) -> dict[str, Any] | None:
     ok, reason = await evaluate(user, signal, local_now)
     if not ok:
         log.debug("Suppressed %s for %s: %s", signal["key"], user["uid"], reason)
         return None
     uid = user["uid"]
-    doc_id = hashlib.sha1(f"{uid}|{signal['key']}".encode(), usedforsecurity=False).hexdigest()[:20]
+    doc_id = stable_id(uid, signal["key"])
     prefs = user.get("notification_prefs") or {}
     doc = {
         "uid": uid,
@@ -87,7 +118,7 @@ async def dispatch(user: dict[str, Any], signal: dict[str, Any], local_now: date
         "message": signal["message"],
         "data": signal.get("data"),
         "location_id": (user.get("location") or {}).get("id"),
-        "created_at": datetime.now(UTC).isoformat(),
+        "created_at": utc_now_iso(),
         "read": False,
         "delivery": {"in_app": bool(prefs.get("in_app", True)), "telegram": "not_requested"},
     }

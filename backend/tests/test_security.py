@@ -1,4 +1,5 @@
 """Security controls: headers, CORS, rate limiting, request size, access control and secret handling."""
+
 import asyncio
 
 import httpx
@@ -36,6 +37,7 @@ def client(sample_bundle, monkeypatch):
 
 # ----------------------------------------------------------------------------- headers / CORS
 
+
 def test_security_headers_on_api_responses(client):
     r = client.get("/api/health")
     assert r.headers["x-content-type-options"] == "nosniff"
@@ -53,15 +55,17 @@ def test_docs_get_a_csp_that_allows_swagger_assets(client):
 
 
 def test_cors_allows_configured_origin_without_credentials(client):
-    r = client.options("/api/health", headers={"Origin": "http://localhost:5173",
-                                               "Access-Control-Request-Method": "GET"})
+    r = client.options(
+        "/api/health", headers={"Origin": "http://localhost:5173", "Access-Control-Request-Method": "GET"}
+    )
     assert r.headers["access-control-allow-origin"] == "http://localhost:5173"
     assert "access-control-allow-credentials" not in r.headers
 
 
 def test_cors_rejects_unknown_origin(client):
-    r = client.options("/api/health", headers={"Origin": "https://evil.example",
-                                               "Access-Control-Request-Method": "GET"})
+    r = client.options(
+        "/api/health", headers={"Origin": "https://evil.example", "Access-Control-Request-Method": "GET"}
+    )
     assert "access-control-allow-origin" not in r.headers
 
 
@@ -73,6 +77,7 @@ def test_large_json_responses_are_gzipped(client):
 
 # ----------------------------------------------------------------------------- request size
 
+
 def test_oversized_body_is_rejected_with_413(client):
     big = "x" * (get_settings().max_request_bytes + 10)
     r = client.post("/api/assistant/chat", content=big, headers={"Content-Type": "application/json"})
@@ -80,6 +85,7 @@ def test_oversized_body_is_rejected_with_413(client):
 
 
 # ----------------------------------------------------------------------------- rate limiting
+
 
 def test_rate_limiter_window_and_retry_after():
     rl = RateLimiter()
@@ -134,9 +140,9 @@ def test_client_ip_falls_back_to_peer_without_header():
 
 # ----------------------------------------------------------------------------- production guard
 
+
 def _settings(**env):
-    return Settings(**{"AIRENV_ENV": "production", "AUTH_MODE": "firebase", "TELEGRAM_BOT_TOKEN": "",
-                       **env})
+    return Settings(**{"AIRENV_ENV": "production", "AUTH_MODE": "firebase", "TELEGRAM_BOT_TOKEN": "", **env})
 
 
 def test_production_rejects_local_auth():
@@ -155,8 +161,12 @@ def test_production_requires_webhook_secret():
 
 
 def test_safe_production_config_passes():
-    _settings(CORS_ORIGINS="https://airenv.example", TELEGRAM_BOT_TOKEN="t", TELEGRAM_MODE="webhook",
-              TELEGRAM_WEBHOOK_SECRET="s3cret").validate_for_runtime()
+    _settings(
+        CORS_ORIGINS="https://airenv.example",
+        TELEGRAM_BOT_TOKEN="t",
+        TELEGRAM_MODE="webhook",
+        TELEGRAM_WEBHOOK_SECRET="s3cret",
+    ).validate_for_runtime()
 
 
 def test_development_allows_local_auth():
@@ -165,17 +175,22 @@ def test_development_allows_local_auth():
 
 # ----------------------------------------------------------------------------- telegram webhook
 
+
 def test_webhook_rejects_missing_and_wrong_secret(client, monkeypatch):
     monkeypatch.setattr(get_settings(), "telegram_webhook_secret", "right-secret")
     assert client.post("/api/telegram/webhook", json={}).status_code == 401
-    assert client.post("/api/telegram/webhook", json={},
-                       headers={"X-Telegram-Bot-Api-Secret-Token": "wrong"}).status_code == 401
+    assert (
+        client.post("/api/telegram/webhook", json={}, headers={"X-Telegram-Bot-Api-Secret-Token": "wrong"}).status_code
+        == 401
+    )
 
 
 def test_webhook_disabled_when_no_secret_configured(client, monkeypatch):
     monkeypatch.setattr(get_settings(), "telegram_webhook_secret", None)
-    assert client.post("/api/telegram/webhook", json={},
-                       headers={"X-Telegram-Bot-Api-Secret-Token": ""}).status_code == 401
+    assert (
+        client.post("/api/telegram/webhook", json={}, headers={"X-Telegram-Bot-Api-Secret-Token": ""}).status_code
+        == 401
+    )
 
 
 def test_webhook_accepts_valid_secret_and_rejects_non_object(client, monkeypatch):
@@ -193,6 +208,7 @@ def test_webhook_accepts_valid_secret_and_rejects_non_object(client, monkeypatch
 
 # ----------------------------------------------------------------------------- stream
 
+
 def test_stream_rejects_malformed_location_id(client):
     assert client.get("/api/stream", params={"location_id": "user:someone-else"}).status_code == 422
     assert client.get("/api/stream", params={"location_id": "../../x"}).status_code == 422
@@ -208,6 +224,7 @@ def test_stream_ticket_is_single_use_and_bounded(client, monkeypatch):
 
 
 # ----------------------------------------------------------------------------- input validation
+
 
 def test_location_id_is_derived_from_coordinates():
     loc = Location(id="user:victim", name="X", lat=28.6139, lon=77.209)
@@ -226,6 +243,7 @@ def test_profile_location_id_cannot_be_injected(client):
 
 
 # ----------------------------------------------------------------------------- access control
+
 
 def _member(uid: str) -> CurrentUser:
     return CurrentUser(uid=uid, role="member", auth_mode="firebase")
@@ -273,8 +291,11 @@ def test_manual_refresh_is_throttled_per_location(client, monkeypatch):
 
     monkeypatch.setattr("app.scheduler.refresh_location", fake_refresh)
     air_api._last_manual_refresh.clear()
-    monkeypatch.setattr(ambient, "cached_bundle", lambda _id: {"snapshot": {"status": "live", "observed_at": None,
-                                                                          "fetched_at": "cached"}})
+    monkeypatch.setattr(
+        ambient,
+        "cached_bundle",
+        lambda _id: {"snapshot": {"status": "live", "observed_at": None, "fetched_at": "cached"}},
+    )
     first = client.post("/api/air/refresh").json()
     second = client.post("/api/air/refresh").json()
     assert first["throttled"] is False and second["throttled"] is True
@@ -283,6 +304,7 @@ def test_manual_refresh_is_throttled_per_location(client, monkeypatch):
 
 
 # ----------------------------------------------------------------------------- secret handling
+
 
 def test_upstream_errors_never_include_the_request_url(monkeypatch):
     secret_url = "https://api.data.gov.in/resource/x?api-key=SUPERSECRET"

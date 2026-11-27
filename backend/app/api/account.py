@@ -1,16 +1,20 @@
 """Profile, notifications, Telegram account linking and the live event stream."""
+
 from __future__ import annotations
 
 import asyncio
 import secrets
 import time
-from datetime import UTC, datetime
+from collections.abc import AsyncIterator
+from datetime import datetime
+from typing import Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
 from app.config import get_settings
+from app.core.clock import utc_now, utc_now_iso
 from app.core.events_bus import bus
 from app.core.security import CurrentUser, get_current_user, new_token
 from app.db.store import get_store
@@ -23,6 +27,7 @@ NOTIFICATION_CATEGORIES = ("critical", "deterioration", "forecast", "community",
 
 
 # ----------------------------------------------------------------------------- profile
+
 
 class FamilyContext(BaseModel):
     children: bool = False
@@ -82,13 +87,13 @@ class ProfilePatch(BaseModel):
 
 
 @router.get("/me")
-async def me(user: CurrentUser = Depends(get_current_user)):
+async def me(user: CurrentUser = Depends(get_current_user)) -> dict[str, Any]:
     profile = await get_store().get("users", user.uid) or {}
     return {**profile, "role": user.role, "auth_mode": user.auth_mode}
 
 
 @router.patch("/me")
-async def update_me(patch: ProfilePatch, user: CurrentUser = Depends(get_current_user)):
+async def update_me(patch: ProfilePatch, user: CurrentUser = Depends(get_current_user)) -> dict[str, Any]:
     data = patch.model_dump(exclude_none=True)
     if not data:
         raise HTTPException(400, "Nothing to update")
@@ -97,15 +102,17 @@ async def update_me(patch: ProfilePatch, user: CurrentUser = Depends(get_current
 
 
 @router.get("/me/export")
-async def export_me(user: CurrentUser = Depends(get_current_user)):
+async def export_me(user: CurrentUser = Depends(get_current_user)) -> dict[str, Any]:
     store = get_store()
-    return {"profile": await store.get("users", user.uid),
-            "notifications": await store.query("notifications", [("uid", "==", user.uid)]),
-            "exported_at": datetime.now(UTC).isoformat()}
+    return {
+        "profile": await store.get("users", user.uid),
+        "notifications": await store.query("notifications", [("uid", "==", user.uid)]),
+        "exported_at": utc_now_iso(),
+    }
 
 
 @router.delete("/me/data")
-async def delete_my_data(user: CurrentUser = Depends(get_current_user)):
+async def delete_my_data(user: CurrentUser = Depends(get_current_user)) -> dict[str, Any]:
     store = get_store()
     n = 0
     for doc in await store.query("notifications", [("uid", "==", user.uid)]):
@@ -119,23 +126,28 @@ async def delete_my_data(user: CurrentUser = Depends(get_current_user)):
 
 # ----------------------------------------------------------------------------- notifications
 
+
+async def _own_notification(nid: str, uid: str) -> dict[str, Any]:
+    n = await get_store().get("notifications", nid)
+    if not n or n["uid"] != uid:
+        raise HTTPException(404, "Notification not found")
+    return n
+
+
 @router.get("/notifications")
-async def notifications(user: CurrentUser = Depends(get_current_user)):
+async def notifications(user: CurrentUser = Depends(get_current_user)) -> dict[str, Any]:
     rows = await ns.list_for(user.uid)
     return {"items": rows, "unread": sum(1 for r in rows if not r.get("read"))}
 
 
 @router.post("/notifications/{nid}/read")
-async def mark_read(nid: str, user: CurrentUser = Depends(get_current_user)):
-    store = get_store()
-    n = await store.get("notifications", nid)
-    if not n or n["uid"] != user.uid:
-        raise HTTPException(404, "Notification not found")
-    return await store.update("notifications", nid, {"read": True})
+async def mark_read(nid: str, user: CurrentUser = Depends(get_current_user)) -> dict[str, Any] | None:
+    await _own_notification(nid, user.uid)
+    return await get_store().update("notifications", nid, {"read": True})
 
 
 @router.post("/notifications/read-all")
-async def mark_all_read(user: CurrentUser = Depends(get_current_user)):
+async def mark_all_read(user: CurrentUser = Depends(get_current_user)) -> dict[str, Any]:
     store = get_store()
     rows = await store.query("notifications", [("uid", "==", user.uid), ("read", "==", False)])
     for r in rows:
@@ -144,29 +156,34 @@ async def mark_all_read(user: CurrentUser = Depends(get_current_user)):
 
 
 @router.delete("/notifications/{nid}")
-async def delete_notification(nid: str, user: CurrentUser = Depends(get_current_user)):
-    store = get_store()
-    n = await store.get("notifications", nid)
-    if not n or n["uid"] != user.uid:
-        raise HTTPException(404, "Notification not found")
-    await store.delete("notifications", nid)
+async def delete_notification(nid: str, user: CurrentUser = Depends(get_current_user)) -> dict[str, Any]:
+    await _own_notification(nid, user.uid)
+    await get_store().delete("notifications", nid)
     return {"ok": True}
 
 
 @router.post("/notifications/test")
-async def test_notification(user: CurrentUser = Depends(get_current_user)):
+async def test_notification(user: CurrentUser = Depends(get_current_user)) -> dict[str, Any]:
     """Deliver a test message through the user's enabled channels (bypasses severity filters, not dedup)."""
     profile = await get_store().get("users", user.uid)
     if not profile:
         raise HTTPException(404, "Profile not found")
-    minute = datetime.now(UTC).strftime("%Y%m%d%H%M")
-    signal = {"key": f"test:{minute}", "category": "recommendation", "severity": "critical",
-              "title": "Test notification", "message": "Delivery check from AIRenv settings. No action needed."}
-    prefs = {**(profile.get("notification_prefs") or {}), "min_severity": "info",
-             "quiet_hours": {"enabled": False}}
+    minute = utc_now().strftime("%Y%m%d%H%M")
+    signal = {
+        "key": f"test:{minute}",
+        "category": "recommendation",
+        "severity": "critical",
+        "title": "Test notification",
+        "message": "Delivery check from AIRenv settings. No action needed.",
+    }
+    prefs = {**(profile.get("notification_prefs") or {}), "min_severity": "info", "quiet_hours": {"enabled": False}}
     prefs["categories"] = {**(prefs.get("categories") or {}), "recommendation": True}
-    doc = await ns.dispatch({**profile, "notification_prefs": prefs}, signal, datetime.now(),
-                            tg.send_message if get_settings().telegram_enabled else None)
+    doc = await ns.dispatch(
+        {**profile, "notification_prefs": prefs},
+        signal,
+        datetime.now(),  # local wall time; irrelevant because quiet hours are disabled above
+        tg.send_message if get_settings().telegram_enabled else None,
+    )
     if doc is None:
         raise HTTPException(429, "A test was sent less than a minute ago")
     return doc
@@ -174,27 +191,29 @@ async def test_notification(user: CurrentUser = Depends(get_current_user)):
 
 # ----------------------------------------------------------------------------- telegram
 
+
 @router.get("/telegram/status")
-async def telegram_status():
+async def telegram_status() -> dict[str, Any]:
     return tg.status()
 
 
 @router.post("/telegram/link-code")
-async def telegram_link_code(user: CurrentUser = Depends(get_current_user)):
+async def telegram_link_code(user: CurrentUser = Depends(get_current_user)) -> dict[str, Any]:
     if not get_settings().telegram_bot_token:
         raise HTTPException(503, "Telegram is not configured on the server (TELEGRAM_BOT_TOKEN).")
     return await tg.create_link_code(user.uid)
 
 
 @router.delete("/telegram/link")
-async def telegram_unlink(user: CurrentUser = Depends(get_current_user)):
+async def telegram_unlink(user: CurrentUser = Depends(get_current_user)) -> dict[str, Any]:
     await get_store().update("users", user.uid, {"telegram": None})
     return {"ok": True}
 
 
 @router.post("/telegram/webhook")
-async def telegram_webhook(request: Request,
-                           x_telegram_bot_api_secret_token: str | None = Header(default=None)):
+async def telegram_webhook(
+    request: Request, x_telegram_bot_api_secret_token: str | None = Header(default=None)
+) -> dict[str, Any]:
     s = get_settings()
     expected = s.telegram_webhook_secret or ""
     supplied = x_telegram_bot_api_secret_token or ""
@@ -216,12 +235,13 @@ async def telegram_webhook(request: Request,
 
 TICKET_TTL_SECONDS = 60
 MAX_OPEN_TICKETS = 5000
+KEEP_ALIVE_SECONDS = 20
 _tickets: dict[str, tuple[float, str]] = {}
-_background: set[asyncio.Task] = set()
+_background: set[asyncio.Task[None]] = set()
 
 
 @router.post("/stream/ticket")
-async def stream_ticket(user: CurrentUser = Depends(get_current_user)):
+async def stream_ticket(user: CurrentUser = Depends(get_current_user)) -> dict[str, Any]:
     """EventSource cannot send auth headers, so clients exchange their token for a short-lived ticket."""
     now = time.time()
     for k in [k for k, (exp, _) in _tickets.items() if exp < now]:
@@ -234,9 +254,11 @@ async def stream_ticket(user: CurrentUser = Depends(get_current_user)):
 
 
 @router.get("/stream")
-async def stream(request: Request,
-                 location_id: str = Query(pattern=LOCATION_ID_PATTERN, max_length=24),
-                 ticket: str | None = Query(None, max_length=64)):
+async def stream(
+    request: Request,
+    location_id: str = Query(pattern=LOCATION_ID_PATTERN, max_length=24),
+    ticket: str | None = Query(None, max_length=64),
+) -> StreamingResponse:
     topics = [f"location:{location_id}"]
     if ticket:
         entry = _tickets.pop(ticket, None)
@@ -244,19 +266,20 @@ async def stream(request: Request,
             topics.append(f"user:{entry[1]}")
     queue = bus.subscribe(topics)
 
-    async def gen():
+    async def gen() -> AsyncIterator[str]:
         try:
-            yield f"event: ready\ndata: {{\"topics\": {len(topics)}}}\n\n"
+            yield f'event: ready\ndata: {{"topics": {len(topics)}}}\n\n'
             while True:
                 if await request.is_disconnected():
                     break
                 try:
-                    msg = await asyncio.wait_for(queue.get(), timeout=20)
+                    msg = await asyncio.wait_for(queue.get(), timeout=KEEP_ALIVE_SECONDS)
                     yield msg
                 except TimeoutError:
                     yield ": keep-alive\n\n"
         finally:
             bus.unsubscribe(queue)
 
-    return StreamingResponse(gen(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        gen(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+    )

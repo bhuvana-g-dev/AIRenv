@@ -42,13 +42,17 @@ describe("useToasts store", () => {
   });
 
   const push = (title: string) => act(() => useToasts.getState().push({ title, tone: "info" }));
+  const advance = (ms: number) =>
+    act(() => {
+      vi.advanceTimersByTime(ms);
+    });
 
   it("adds toasts with unique ids and auto-dismisses them", () => {
     push("One");
     push("Two");
     const [a, b] = useToasts.getState().toasts;
     expect(a.id).not.toBe(b.id);
-    act(() => vi.advanceTimersByTime(TOAST_TIMEOUT_MS + 1));
+    advance(TOAST_TIMEOUT_MS + 1);
     expect(useToasts.getState().toasts).toHaveLength(0);
   });
 
@@ -68,18 +72,18 @@ describe("useToasts store", () => {
     push("Hold me");
     const id = useToasts.getState().toasts[0].id;
     act(() => useToasts.getState().hold(id));
-    act(() => vi.advanceTimersByTime(TOAST_TIMEOUT_MS * 3));
+    advance(TOAST_TIMEOUT_MS * 3);
     expect(useToasts.getState().toasts).toHaveLength(1);
     act(() => useToasts.getState().release(id));
-    act(() => vi.advanceTimersByTime(TOAST_TIMEOUT_MS - 1));
+    advance(TOAST_TIMEOUT_MS - 1);
     expect(useToasts.getState().toasts).toHaveLength(1);
-    act(() => vi.advanceTimersByTime(2));
+    advance(2);
     expect(useToasts.getState().toasts).toHaveLength(0);
   });
 
   it("release of an unknown toast is a no-op", () => {
     act(() => useToasts.getState().release("missing"));
-    act(() => vi.advanceTimersByTime(TOAST_TIMEOUT_MS * 2));
+    advance(TOAST_TIMEOUT_MS * 2);
     expect(useToasts.getState().toasts).toHaveLength(0);
   });
 });

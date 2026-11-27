@@ -107,11 +107,14 @@ Frontend (`frontend/.env`): `VITE_API_BASE_URL`, and optionally `VITE_FIREBASE_A
 ```powershell
 cd backend
 .\.venv\Scripts\python -m pip install -r requirements-dev.txt
-.\.venv\Scripts\python -m ruff check .                    # lint, incl. bandit security rules
-.\.venv\Scripts\python -m pytest --cov=app               # 610 tests, 97% line coverage
+.\.venv\Scripts\python -m ruff check .                    # lint: bandit security, complexity ≤ 10, pylint rules
+.\.venv\Scripts\python -m ruff format --check .           # formatting
+.\.venv\Scripts\python -m mypy                            # strict-ish typing of app/
+.\.venv\Scripts\python -m pytest --cov=app               # 610 tests, 98% line coverage
 
 cd frontend
-npm run typecheck; npm run lint; npm test; npm run build  # ESLint + jsx-a11y; 94 tests incl. axe checks
+npm run typecheck; npm run lint; npm run format:check     # tsc strict, type-aware ESLint + jsx-a11y, Prettier
+npm test; npm run build                                   # 170 tests incl. axe accessibility checks
 ```
 
 Backend tests cover NAQI breakpoints, extraction and redaction, alert dedup and cooldowns, impact maths, the scheduler, Telegram flows, every API route, access control and the security middleware. They run offline. Frontend tests cover the API client, state, formatting, colour-contrast tokens (WCAG AA) and component accessibility: dialogs, focus traps, tabs, switches, skip link and live regions. GitHub Actions (`.github/workflows/ci.yml`) runs all of these on every push and fails if backend coverage drops below 90%.

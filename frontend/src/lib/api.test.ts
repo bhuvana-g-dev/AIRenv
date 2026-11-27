@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getIdToken } from "./auth";
-import { api, ApiError, del, locQuery, patch, post } from "./api";
+import { api, ApiError, del, locQuery, parseErrorDetail, patch, post } from "./api";
 
 vi.mock("./auth", () => ({ getIdToken: vi.fn() }));
 
@@ -69,7 +69,12 @@ describe("api()", () => {
 
   it("reads message, code and demo flag from an object `detail`", async () => {
     fetchMock.mockResolvedValue(respond(503, { detail: { message: "Providers down", code: "data_unavailable", demo_available: true } }));
-    await expect(api("/x")).rejects.toMatchObject({ status: 503, message: "Providers down", code: "data_unavailable", demoAvailable: true });
+    await expect(api("/x")).rejects.toMatchObject({
+      status: 503,
+      message: "Providers down",
+      code: "data_unavailable",
+      demoAvailable: true,
+    });
   });
 
   it("keeps the generic message when an object `detail` has no message", async () => {
@@ -127,6 +132,24 @@ describe("method helpers", () => {
       ["/q", "PATCH", '{"b":2}'],
       ["/r", "DELETE", undefined],
     ]);
+  });
+});
+
+describe("parseErrorDetail()", () => {
+  it("reads string, object and validation-list details", () => {
+    expect(parseErrorDetail({ detail: "Nope" }, "fallback")).toEqual({ message: "Nope" });
+    expect(parseErrorDetail({ detail: { message: "Down", code: "x", demo_available: true } }, "f")).toEqual({
+      message: "Down",
+      code: "x",
+      demoAvailable: true,
+    });
+    expect(parseErrorDetail({ detail: [{ msg: "a" }, { msg: "b" }] }, "f")).toEqual({ message: "a; b" });
+  });
+
+  it("falls back for empty or unexpected bodies", () => {
+    expect(parseErrorDetail(null, "Request failed (500)")).toEqual({ message: "Request failed (500)" });
+    expect(parseErrorDetail({ detail: {} }, "fb")).toMatchObject({ message: "fb" });
+    expect(parseErrorDetail("oops", "fb")).toEqual({ message: "fb" });
   });
 });
 

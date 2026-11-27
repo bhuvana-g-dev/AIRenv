@@ -38,7 +38,12 @@ function ToastItem({ t }: { t: Toast }) {
         </p>
         {t.message && <p className="mt-0.5 line-clamp-3 text-xs text-muted">{t.message}</p>}
       </div>
-      <button type="button" onClick={() => dismiss(t.id)} className="-m-1 grid h-7 w-7 shrink-0 place-items-center rounded-lg text-faint hover:bg-white/5 hover:text-ink" aria-label={`Dismiss notification: ${t.title}`}>
+      <button
+        type="button"
+        onClick={() => dismiss(t.id)}
+        className="-m-1 grid h-7 w-7 shrink-0 place-items-center rounded-lg text-faint hover:bg-white/5 hover:text-ink"
+        aria-label={`Dismiss notification: ${t.title}`}
+      >
         <X aria-hidden="true" className="h-3.5 w-3.5" />
       </button>
     </motion.div>

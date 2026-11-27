@@ -47,6 +47,11 @@ export function windDirection(deg: number | null | undefined): string {
   return dirs[Math.round(deg / 45) % 8];
 }
 
+/** `n` followed by the singular or plural word, e.g. "1 record" / "3 records". */
+export function plural(n: number, singular: string, pluralForm = `${singular}s`): string {
+  return `${n} ${n === 1 ? singular : pluralForm}`;
+}
+
 export function pct(v: number | null | undefined): string {
   if (v == null) return "—";
   return `${v > 0 ? "+" : ""}${v.toFixed(0)}%`;

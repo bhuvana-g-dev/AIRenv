@@ -1,4 +1,5 @@
 """Shared request helpers."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -19,8 +20,14 @@ def location_param(
 ) -> Location:
     s = get_settings()
     if lat is None or lon is None:
-        return make_location(s.default_location_name, s.default_lat, s.default_lon, timezone=s.default_timezone,
-                             country="India", admin1="Delhi")
+        return make_location(
+            s.default_location_name,
+            s.default_lat,
+            s.default_lon,
+            timezone=s.default_timezone,
+            country="India",
+            admin1="Delhi",
+        )
     return make_location(name or f"{lat:.3f}, {lon:.3f}", lat, lon)
 
 
@@ -28,8 +35,9 @@ async def bundle_or_503(loc: Location, allow_demo: bool = False) -> dict[str, An
     try:
         return await ambient.get_bundle(loc, allow_demo=allow_demo)
     except UpstreamError as exc:
-        raise HTTPException(503, {"code": "data_unavailable", "message": exc.message, "provider": exc.provider,
-                                  "demo_available": True}) from exc
+        raise HTTPException(
+            503, {"code": "data_unavailable", "message": exc.message, "provider": exc.provider, "demo_available": True}
+        ) from exc
 
 
 async def profile_of(uid: str | None) -> dict[str, Any] | None:

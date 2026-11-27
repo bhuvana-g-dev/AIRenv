@@ -1,4 +1,5 @@
 """SQLite document store: query pushdown must never change results compared with in-Python filtering."""
+
 import asyncio
 import sqlite3
 
@@ -23,20 +24,23 @@ def store():
     return s
 
 
-@pytest.mark.parametrize("filters", [
-    [("uid", "==", "u1")],
-    [("uid", "==", 1)],
-    [("flag", "==", True)],
-    [("flag", "==", False)],
-    [("n", "==", 3)],
-    [("location.id", "==", "28.61_77.21")],
-    [("uid", "in", ["u1", "u2"])],
-    [("uid", "==", "u1"), ("flag", "==", True)],
-    [("tags", "array_contains", "y")],
-    [("n", ">=", 2)],
-    [("uid", "!=", "u1")],
-    [],
-])
+@pytest.mark.parametrize(
+    "filters",
+    [
+        [("uid", "==", "u1")],
+        [("uid", "==", 1)],
+        [("flag", "==", True)],
+        [("flag", "==", False)],
+        [("n", "==", 3)],
+        [("location.id", "==", "28.61_77.21")],
+        [("uid", "in", ["u1", "u2"])],
+        [("uid", "==", "u1"), ("flag", "==", True)],
+        [("tags", "array_contains", "y")],
+        [("n", ">=", 2)],
+        [("uid", "!=", "u1")],
+        [],
+    ],
+)
 def test_query_matches_pure_python_filtering(store, filters):
     got = sorted(d["id"] for d in asyncio.run(store.query("things", filters)))
     expected = sorted(k for k, v in DOCS.items() if _match({**v, "id": k}, filters))
@@ -60,7 +64,8 @@ def test_pushdown_only_translates_exact_scalar_filters():
 def test_equality_lookup_uses_expression_index(store):
     plan = store._conn.execute(
         "EXPLAIN QUERY PLAN SELECT data FROM docs WHERE collection=? AND json_extract(data, '$.uid') = ?",
-        ("things", "u1")).fetchall()
+        ("things", "u1"),
+    ).fetchall()
     assert any("idx_docs_uid" in str(row) for row in plan)
 
 
